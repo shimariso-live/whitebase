@@ -1,5 +1,6 @@
 app-emulation/xen
 app-emulation/xen-pvgrub
+sys-kernel/linux-firmware
 sys-boot/grub
 dev-libs/iniparser
 sys-fs/xfsprogs
