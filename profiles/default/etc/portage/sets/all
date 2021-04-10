@@ -116,3 +116,5 @@ sys-process/iotop
 
 app-emulation/qemu
 
+dev-python/requests # for rpmbootstrap
+
