@@ -1,0 +1,12 @@
+#!/bin/sh
+sed -i 's/^\(XENDOMAINS_SAVE=.*\)$/#\1/' /etc/default/xendomains
+sed -i 's/^handle_iptable$/#\0/' /etc/xen/scripts/vif-bridge
+touch /var/lib/xen /var/log/xen
+
+systemctl enable xen-init-dom0 xen-watchdog xenconsoled xendomains xenstored
+
+# pv(h)-grub2
+echo -e 'set root=(xen/xvda1)\nnormal (xen/xvda1)/boot/grub/grub.cfg' > /tmp/grub.cfg
+grub-mkimage -c /tmp/grub.cfg -p /boot/grub -o /usr/libexec/xen/boot/pv-grub2-x86_64 -O x86_64-xen loopback xfs btrfs linux echo test gzio xzio probe configfile cpuid minicmd squash4 lsxen && gzip /usr/libexec/xen/boot/pv-grub2-x86_64
+grub-mkimage -c /tmp/grub.cfg -p /boot/grub -o /usr/libexec/xen/boot/pvh-grub2-x86_64 -O i386-xen_pvh loopback xfs btrfs linux echo test gzio xzio probe configfile cpuid minicmd squash4 && gzip /usr/libexec/xen/boot/pvh-grub2-x86_64
+

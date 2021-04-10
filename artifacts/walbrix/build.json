@@ -1,0 +1,5 @@
+{
+	"profile":"xen",
+	"packages":["@all","kbd"],
+	"outfile":"walbrix.squashfs"
+}

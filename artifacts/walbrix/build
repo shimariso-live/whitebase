@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+VERSION=`file -L /boot/kernel| sed 's/^.\+ version \([^ ]\+\)\s.\+$/\1/'|sed 's/-gentoo//'`
+sed -i "s/__VERSION__/$VERSION/g" /boot/grub/grub.cfg
+
+sed -i 's/snapshot_autoextend_threshold = 100/snapshot_autoextend_threshold = 80/' /etc/lvm/lvm.conf
+sed -i 's/use_lvmetad = 0/use_lvmetad = 1/' /etc/lvm/lvm.conf
+
+#$write /etc/locale.conf "LANG=ja_JP.utf8"
+#$write /etc/vconsole.conf "KEYMAP=jp106"
+#$mkdir /etc/X11/xorg.conf.d
+#$write /etc/X11/xorg.conf.d/00-keyboard.conf 'Section "InputClass"\n\tIdentifier "system-keyboard"\n\tMatchIsKeyboard "on"\n\tOption "XkbLayout" "jp"\n\tOption "XkbModel" "jp106"\n\tOption "XkbOptions" "terminate:ctrl_alt_bksp"\nEndSection'
+
+# services preferred by installer/rescue env
+sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-networkd.service
+sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-resolved.service
+sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/sshd.service
+sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/openvpn-client@.service
+sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/zabbix-agentd.service
+
+touch /usr/sbin/install-system-image
+touch /usr/sbin//expand-rw-layer
+touch /usr/sbin/do-with-lvm-snapshot
+touch /usr/sbin/rpmbootstrap
+
+cd /usr/src/walbrix
+make
+make install
+
+systemctl disable getty\@tty1
+systemctl enable mdmonitor zram_swap wbdomains kmsconvt\@tty1
+

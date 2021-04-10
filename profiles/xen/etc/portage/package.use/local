@@ -1,0 +1,96 @@
+sys-devel/binutils multitarget
+sys-boot/grub device-mapper grub_platforms_efi-64 grub_platforms_pc grub_platforms_xen grub_platforms_xen-pvh
+sys-auth/pambase -passwdqc
+
+sys-kernel/gentoo-sources symlink
+virtual/linux-sources firmware
+
+# to force rebuild systemd
+sys-apps/systemd -acl
+
+sys-apps/util-linux static-libs -python
+app-editors/vim minimal -python
+
+net-vpn/openvpn threads inotify iproute2 lz4
+dev-lang/python sqlite
+net-fs/cifs-utils -acl -ads -caps 
+sys-apps/usb_modeswitch jimtcl
+app-admin/testdisk ntfs
+app-admin/sudo -sendmail pam
+net-analyzer/zabbix sqlite agent proxy curl snmp -postgres
+net-analyzer/fping suid
+sys-apps/smartmontools minimal
+net-fs/samba -system-mitkrb5 winbind client
+dev-db/mysql -perl
+sys-power/nut usb
+net-fs/nfs-utils -tcpd
+sys-apps/kmod lzma -python
+sys-libs/ncurses tinfo
+sys-fs/lvm2 -readline systemd -thin udev
+net-misc/rsync xxhash
+net-analyzer/barnyard2 mysql
+dev-db/mysql -perl -server
+
+# splash
+sys-libs/zlib static-libs
+media-libs/libjpeg-turbo static-libs
+virtual/jpeg static-libs
+app-arch/bzip2 static-libs
+media-libs/libpng static-libs
+media-libs/freetype static-libs png
+media-gfx/splashutils fbcondecor
+
+# xen
+app-emulation/xen efi
+app-emulation/xen-tools api pygrub xend hvm -qemu -system-qemu -ocaml python -ovmf
+sys-apps/kexec-tools lzma xen
+sys-cluster/drbd-utils xen
+
+# wbui
+media-libs/mesa X -wayland classic dri3 egl gallium gles2 llvm -vulkan -zstd video_cards_vmware
+x11-libs/libdrm video_cards_vmware
+media-libs/libsdl2 -X gles2 alsa kms cpu_flags_x86_3dnow
+media-libs/libglvnd X # for kmscon
+media-libs/sdl2-image jpeg png webp
+media-libs/sdl2-mixer mp3 vorbis
+
+# dev
+dev-vcs/git -perl -gpg -python
+
+# networks
+net-analyzer/net-snmp -python
+net-dns/avahi -introspection dbus
+net-wireless/wpa_supplicant dbus
+net-dns/dnsmasq dhcp-tools script
+
+# misc
+media-sound/mpg123 alsa
+net-fs/s3fs openssl
+dev-python/netaddr -cli
+sys-fs/squashfs-tools lzma
+app-arch/rpm lua caps
+
+# assume EC algorythms are safe
+dev-libs/openssl -bindist
+net-misc/openssh -bindist
+net-wireless/wpa_supplicant -bindist
+
+# hardware
+x11-base/xorg-drivers -input_devices_keyboard -input_devices_libinput -input_devices_mouse -video_cards_amdgpu -video_cards_dummy -video_cards_fbdev -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi -video_cards_vesa
+sci-geosciences/gpsd bluetooth ntp python usb gpsd_protocols_fury gpsd_protocols_geostar gpsd_protocols_nmea0183 gpsd_protocols_nmea2000 gpsd_protocols_passthrough -gpsd_protocols_isync -gpsd_protocols_ublox -gpsd_protocols_greis
+dev-python/pyserial
+net-misc/modemmanager mbim
+
+# strip python dependency
+app-misc/pax-utils -python
+sys-apps/usbutils -python
+net-mail/mailutils -python
+sys-fs/btrfs-progs -python
+dev-libs/boost -python
+sys-apps/file -python
+sys-libs/cracklib -python
+dev-libs/libnl -python
+sys-libs/libcap-ng -python
+sys-libs/ldb -ldap
+
+dev-libs/poco -mongodb
