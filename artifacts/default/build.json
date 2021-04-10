@@ -1,0 +1,4 @@
+{
+	"packages":["@all","kbd","libjpeg-turbo"],
+	"outfile":"whitebase.squashfs"
+}

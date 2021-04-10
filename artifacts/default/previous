@@ -1,0 +1,15 @@
+# hardware
+/etc/udev/hwdb.bin
+#/usr/bin/cpuid2cpuflags
+#$copy walbrix/arcconf /opt/bin/arcconf
+#$require nut.lst
+#$require omronups.lst
+
+#$require s3fs.lst
+
+$require requests.lst
+
+#$exec --overlay "env-update"
+$exec "rm -rf /etc/profile.env /etc/environment.d /usr/lib/systemd/system-environment-generators/10-gentoo-path"
+$exec ldconfig
+$touch /done

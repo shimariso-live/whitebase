@@ -1,0 +1,12 @@
+sys-kernel/gentoo-sources
+sys-kernel/linux-firmware
+sys-apps/hwids
+net-misc/usbip
+sys-fs/bcache-tools
+net-analyzer/snort
+
+# ui
+media-libs/libsdl2
+dev-cpp/picojson
+dev-cpp/pstreams
+dev-cpp/argparse

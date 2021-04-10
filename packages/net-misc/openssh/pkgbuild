@@ -1,0 +1,4 @@
+#!/bin/sh
+sed -i 's/^#StrictModes\s.\+$/StrictModes no/' /etc/ssh/sshd_config
+
+

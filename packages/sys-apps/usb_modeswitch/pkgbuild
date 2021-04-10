@@ -1,0 +1,2 @@
+#!/bin/sh
+touch /var/lib/usb_modeswitch
