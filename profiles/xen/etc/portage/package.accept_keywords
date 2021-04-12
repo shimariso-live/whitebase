@@ -3,7 +3,7 @@ sys-fs/bcache-tools
 
 # Xen
 app-emulation/xen
-app-emulation/xen
+app-emulation/xen-tools
 app-emulation/xen-pvgrub
 
 #snort
