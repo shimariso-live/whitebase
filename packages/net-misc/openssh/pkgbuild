@@ -1,4 +1,6 @@
 #!/bin/sh
 sed -i 's/^#StrictModes\s.\+$/StrictModes no/' /etc/ssh/sshd_config
-
-
+sed -i 's/^#PermitRootLogin prohibit-password$/PermitRootLogin yes/' /etc/ssh/sshd_config
+mkdir /root/.ssh
+chmod 700 /root/.ssh
+touch /root/.ssh/authorized_keys
