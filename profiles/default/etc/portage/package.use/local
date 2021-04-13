@@ -32,10 +32,11 @@ dev-db/mysql -perl -server
 app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png -pulseaudio -python -seccomp -usb -vhost-net vnc xattr opengl virgl -xfs -xkb -qemu_softmmu_targets_i386 -qemu_user_targets_i386
 
 # wbui
-media-libs/mesa X -wayland classic dri3 egl gallium gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
-media-libs/libglvnd X
+dev-libs/weston -X desktop headless launch -rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp fbdev
+media-libs/mesa -X wayland classic dri3 egl gallium gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
+#media-libs/libglvnd X
 x11-libs/libdrm video_cards_vmware
-media-libs/libsdl2 -X gles2 alsa kms cpu_flags_x86_3dnow
+media-libs/libsdl2 -X gles2 alsa wayland cpu_flags_x86_3dnow
 media-libs/sdl2-image jpeg png webp
 media-libs/sdl2-mixer mp3 vorbis
 

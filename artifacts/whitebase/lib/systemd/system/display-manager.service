@@ -1,10 +1,14 @@
 [Unit]
-Description=Walbrix UI
+Description=Weston
 Conflicts=getty@tty1.service
-After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service
+Before=ui.service
+#After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service
 
 [Service]
-ExecStart=/usr/sbin/wb login tty1
+Type=notify
+Environment=XDG_RUNTIME_DIR=/run/weston
+ExecStartPre=/bin/mkdir -p /run/weston
+ExecStart=/usr/bin/weston --log=/var/log/weston.log --tty=1 --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode
 Restart=always
 
 [Install]

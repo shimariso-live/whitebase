@@ -29,5 +29,5 @@ cd /usr/src/walbrix
 make
 make install
 
-systemctl enable mdmonitor zram_swap walbrixd
+systemctl enable mdmonitor zram_swap walbrixd ui
 

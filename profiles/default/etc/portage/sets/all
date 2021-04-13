@@ -94,6 +94,7 @@ media-libs/libsdl2
 media-libs/sdl2-image
 media-libs/sdl2-mixer
 media-libs/sdl2-ttf
+dev-libs/weston
 media-fonts/vlgothic
 media-sound/alsa-utils
 dev-cpp/argparse

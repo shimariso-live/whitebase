@@ -530,6 +530,7 @@ int ui(const char* tty = NULL, bool installer = false)
     int rst = 0;
     std::optional<std::string> error_message;
 
+retry:;
     try {
         //cout << "Initializing SDL..." << std::endl;
         if (SDL_Init(SDL_INIT_VIDEO) < 0) throw UnrecoverableSDLError("SDL_Init");
@@ -547,8 +548,10 @@ int ui(const char* tty = NULL, bool installer = false)
     }
     catch (const UnrecoverableSDLError& e) {
         std::string what = e.what();
-        if ((what == "SDL_Init" || what == "SDL_CreateWindow" || what == "SDL_CreateRenderer") && tty) {
-            rst = 114518;
+        if ((what == "SDL_Init"/* || what == "SDL_CreateWindow" || what == "SDL_CreateRenderer"*/) && tty) {
+            //rst = 114518;
+            sleep(3);
+            goto retry;
         } else {
             error_message = std::string(e.what()) + ": " + SDL_GetError();
             rst = 1;
