@@ -534,14 +534,18 @@ retry:;
     try {
         //cout << "Initializing SDL..." << std::endl;
         if (SDL_Init(SDL_INIT_VIDEO) < 0) throw UnrecoverableSDLError("SDL_Init");
+        const char* videodriver = SDL_GetCurrentVideoDriver();
+        //bool wayland = videodriver? (strcmp(videodriver, "wayland") == 0): false;
         //cout << "Initializing TTF subsystem..." << std::endl;
         if (TTF_Init() < 0) throw TTFError();
         //cout << "Creating Window..." << std::endl;
-        auto window = make_shared(SDL_CreateWindow("walbrix",SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,width,height,SDL_WINDOW_SHOWN));
+        auto window = make_shared(SDL_CreateWindow("walbrix",SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            width,height,SDL_WINDOW_SHOWN));
         if (!window) throw UnrecoverableSDLError("SDL_CreateWindow");
         //cout << "Creating Renderer..." << std::endl;
         auto renderer = make_shared(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_PRESENTVSYNC));
         if (!renderer) throw UnrecoverableSDLError("SDL_CreateRenderer");
+        if (SDL_RenderSetLogicalSize(renderer.get(), width, height) != 0) throw UnrecoverableSDLError("SDL_RenderSetLogicalSize");
         UIContext uicontext(renderer, theme_dir, tty, installer);
         //cout << "Invoking user interface..." << std::endl;
         ui(uicontext);

@@ -77,7 +77,8 @@ public:
     const std::filesystem::path resource_path;
 
     UIContext(std::shared_ptr<SDL_Renderer> _renderer, const std::filesystem::path& _resource_path, const char* _tty = NULL, bool _installer = false) : renderer(_renderer), resource_path(_resource_path), registry(_renderer, _resource_path), tty(_tty), installer(_installer) {
-        SDL_GetRendererOutputSize(renderer.get(), &width, &height);
+        SDL_RenderGetLogicalSize(renderer.get(), &width, &height);
+        if (width == 0 && height == 0) SDL_GetRendererOutputSize(renderer.get(), &width, &height);
     }
 
     operator SDL_Renderer*() const { return renderer.get(); }
