@@ -1,4 +1,6 @@
 sys-kernel/linux-firmware
+app-emulation/xen
+app-emulation/xen-pvgrub
 sys-boot/grub
 dev-libs/iniparser
 sys-fs/xfsprogs
@@ -118,4 +120,3 @@ sys-process/iotop
 app-emulation/qemu
 
 dev-python/requests # for rpmbootstrap
-

@@ -1,4 +1,3 @@
 {
-	"profile":"xen",
 	"packages":["@all","kbd"]
 }

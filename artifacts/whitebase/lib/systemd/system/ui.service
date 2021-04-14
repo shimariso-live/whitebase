@@ -3,8 +3,7 @@ Description=Walbrix UI
 Requires=display-manager.service
 
 [Service]
-Environment=XDG_RUNTIME_DIR=/run/weston
-ExecStart=/usr/sbin/wb login tty1
+ExecStart=/usr/sbin/start-ui
 Restart=always
 
 [Install]

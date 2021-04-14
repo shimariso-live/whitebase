@@ -27,6 +27,6 @@ cd /usr/src/walbrix
 make
 make install
 
-systemctl disable getty\@tty1
-systemctl enable mdmonitor zram_swap wbdomains kmsconvt\@tty1
+#systemctl disable getty\@tty1
+systemctl enable mdmonitor zram_swap wbdomains #kmsconvt\@tty1
 

@@ -1,0 +1,14 @@
+#!/bin/sh
+XDG_RUNTIME_DIR=/run/weston
+TTY=1
+
+UI=text
+
+if [ -d /dev/dri -a ! -d /proc/xen ]; then
+	UI=graphical
+fi
+
+export XDG_RUNTIME_DIR
+
+exec /usr/sbin/wb login tty$TTY
+

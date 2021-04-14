@@ -1,0 +1,14 @@
+#!/bin/sh
+XDG_RUNTIME_DIR=/run/weston
+LOGFILE=/var/log/weston.log
+TTY=1
+
+if [ -d /proc/xen ]; then
+	ADDITIONAL_OPTS="--use-pixman"
+fi
+
+mkdir -p $XDG_RUNTIME_DIR
+export XDG_RUNTIME_DIR
+
+exec /usr/bin/weston --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
+

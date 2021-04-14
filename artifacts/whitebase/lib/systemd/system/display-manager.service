@@ -6,9 +6,7 @@ Before=ui.service
 
 [Service]
 Type=notify
-Environment=XDG_RUNTIME_DIR=/run/weston
-ExecStartPre=/bin/mkdir -p /run/weston
-ExecStart=/usr/bin/weston --log=/var/log/weston.log --tty=1 --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode
+ExecStart=/usr/sbin/start-display-manager
 Restart=always
 
 [Install]
