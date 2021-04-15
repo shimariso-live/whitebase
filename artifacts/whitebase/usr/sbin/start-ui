@@ -2,13 +2,15 @@
 XDG_RUNTIME_DIR=/run/weston
 TTY=1
 
-UI=text
-
-if [ -d /dev/dri -a ! -d /proc/xen ]; then
-	UI=graphical
-fi
-
 export XDG_RUNTIME_DIR
 
+if [ -d /proc/xen ]; then
+	LANG=ja_JP.utf8
+	SHELL=/usr/sbin/textui
+	export SHELL LANG
+	exec /usr/bin/weston-terminal
+fi
+
+#else
 exec /usr/sbin/wb login tty$TTY
 

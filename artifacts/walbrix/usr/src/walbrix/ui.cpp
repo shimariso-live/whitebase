@@ -1,5 +1,4 @@
 #include <sys/utsname.h>
-#include "wb.h"
 
 std::pair<uint16_t, uint16_t> measure_text_size(const char* text)
 {
