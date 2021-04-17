@@ -1,6 +1,7 @@
 #!/bin/sh
-sed -i 's/^\(XENDOMAINS_SAVE=.*\)$/#\1/' /etc/sysconfig/xendomains
+sed -i 's/^\(XENDOMAINS_SAVE=.*\)$/#\1/' /etc/default/xendomains
 sed -i 's/^handle_iptable$/#\0/' /etc/xen/scripts/vif-bridge
+sed -i 's/^#vif\.default\.bridge=.*$/vif.default.bridge="br0"/' /etc/xen/xl.conf
 touch /var/lib/xen /var/log/xen
 
 systemctl enable xen-init-dom0 xen-watchdog xenconsoled xendomains xenstored

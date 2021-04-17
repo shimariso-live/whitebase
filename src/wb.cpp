@@ -69,6 +69,7 @@ static int stop(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
     program.add_argument("vmname").help("VM name");
+    // --force not implemented yet
     try {
         program.parse_args(args);
     }

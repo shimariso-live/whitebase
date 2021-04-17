@@ -1,10 +1,10 @@
 [Unit]
 Description=Walbrix daemon
 Requires=local-fs.target
-After=local-fs.target
+After=local-fs.target xenstored.service
 
 [Service]
-ExecStart=-/usr/sbin/walbrixd --bridge br0
+ExecStart=/usr/sbin/walbrixd --bridge br0
 Restart=always
 KillMode=mixed
 BusName=com.walbrix.Walbrix

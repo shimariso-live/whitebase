@@ -26,10 +26,13 @@ struct Config {
     std::string bridge;
 };
 
+enum class VmType { UNKNOWN, NSPAWN, XEN, QEMU };
+
 struct Vm {
     std::string name;
     pid_t pid;
     int fd;
+    VmType vmtype;
 
     int listening_socket;
     int peer_socket = -1;
@@ -68,10 +71,11 @@ std::pair<pid_t, int> createSubprocessWithPty(int rows, int cols, const char* pr
             sigaction(i, &sig_action, NULL);
         }
 
-        // unblock SIGTERM
+        // unblock SIGTERM,SIGCHLD
         sigset_t set;
         sigemptyset(&set);
         sigaddset(&set, SIGTERM);
+        sigaddset(&set, SIGCHLD); // subprocess may spawn grandchild processes
         sigprocmask(SIG_UNBLOCK, &set, NULL);
 
         setenv("TERM", TERM, 1);
@@ -95,6 +99,10 @@ class NotExists : public std::runtime_error {
 public:
     NotExists(const std::string& what) : std::runtime_error(what) {;}
 };
+class VmFormatError : public std::runtime_error {
+public:
+    VmFormatError(const std::string& what) : std::runtime_error(what) {;}
+};
 
 static pid_t start(const Config& config, const std::string& name)
 {
@@ -107,8 +115,11 @@ static pid_t start(const Config& config, const std::string& name)
     auto systempath = vmpath / "system";
     auto fspath = vmpath / "fs";
     auto disk0path = vmpath / "disk0";
+    auto vminipath = vmpath / "vm.ini";
 
-    if (!std::filesystem::exists(vmpath) || (!std::filesystem::exists(systempath) && !std::filesystem::exists(fspath) && ! std::filesystem::exists(disk0path))) {
+    if (!std::filesystem::exists(vmpath) || 
+        (!std::filesystem::exists(systempath) && !std::filesystem::exists(fspath) 
+            && ! std::filesystem::exists(disk0path) && !std::filesystem::exists(vminipath))) {
         throw NotExists("VM not exists.");
     }
     //else
@@ -119,7 +130,9 @@ static pid_t start(const Config& config, const std::string& name)
     struct utsname u_name;
     if (uname(&u_name) < 0) throw std::runtime_error("uname() failed");
 
+    VmType vmtype = VmType::UNKNOWN;
     if (std::filesystem::exists(disk0path)) { // Treat as full virtual
+        vmtype = VmType::QEMU;
         auto cdrompath = vmpath / "cdrom.iso";
         program = std::string("qemu-system-") + u_name.machine;
         args = { "-netdev", "bridge,br=" + config.bridge + ",id=net0", "-device", "virtio-net-pci,netdev=net0", "-monitor", "stdio",
@@ -131,7 +144,13 @@ static pid_t start(const Config& config, const std::string& name)
         if (std::filesystem::exists("/dev/kvm")) {
             args.push_back("-enable-kvm");
         }
+    } else if (std::filesystem::exists(vminipath)) { // Xen domain
+        vmtype = VmType::XEN;
+        if (!std::filesystem::exists("/proc/xen/privcmd")) throw VmFormatError("Xen not enabled");
+        program = "xendomain";
+        args = { name };
     } else { // otherwise a container
+        vmtype = VmType::NSPAWN;
         args = {"-b", std::string("--network-bridge=") + config.bridge, std::string("--machine=") + name, "--register=no",
             "--capability=CAP_SYS_MODULE", std::string("--bind-ro=/lib/modules/") + u_name.release, "--bind-ro=/sys/module/" };
         if (std::filesystem::exists(systempath)) {
@@ -178,7 +197,7 @@ static pid_t start(const Config& config, const std::string& name)
 
     make_nonblocking(sock);
 
-    vms[name] = Vm { name, vm.first, vm.second, sock };
+    vms[name] = Vm { name, vm.first, vm.second, vmtype, sock };
 
     std::cout << name << " started. PID=" << vm.first << "," << " fd=" << vm.second << " sock=" << sock << std::endl;
 
@@ -207,6 +226,10 @@ static int method_start(sd_bus_message *m, void *userdata, sd_bus_error *ret_err
     }
     catch (const NotExists& e) {
         sd_bus_error_set_const(ret_error, "com.walbrix.NotExists", "VM not exists.");
+        return -EINVAL;
+    }
+    catch (const VmFormatError& e) {
+        sd_bus_error_set_const(ret_error, "com.walbrix.VmFormatError", e.what());
         return -EINVAL;
     }
 }
@@ -392,6 +415,7 @@ static void process_autostart(const Config& config)
         }
         catch (const AlreadyRunning&) {}
         catch (const NotExists&) {}
+        catch (const VmFormatError&) {}
     });
 }
 
