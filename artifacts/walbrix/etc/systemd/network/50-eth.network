@@ -1,6 +1,0 @@
-[Match]
-Name=eth*
-[Network]
-Bridge=xenbr0
-[Link]
-RequiredForOnline=no
