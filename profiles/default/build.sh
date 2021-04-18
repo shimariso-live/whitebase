@@ -53,7 +53,7 @@ EOS
 mkdir -p /tmp/initramfs/usr/lib64
 cp -L `gcc -print-file-name=libgcc_s.so.1` /tmp/initramfs/usr/lib64/
 cp -L `gcc -print-file-name=libstdc++.so.6` /tmp/initramfs/usr/lib64/
-g++ -std=c++2a -lblkid -lmount -liniparser4 /init.cpp /initlib.cpp -o /tmp/initramfs/init
+g++ -std=c++2a -lblkid -lmount -liniparser4 /init.cpp /initlib.cpp /fat.cpp -o /tmp/initramfs/init
 tar cf - -C / -T /tmp/initramfs.lst -h | tar xvf - -C /tmp/initramfs
 rm -f /boot/initramfs
 cd /tmp/initramfs && find . | cpio -H newc -o > /boot/initramfs

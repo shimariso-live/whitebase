@@ -1,3 +1,5 @@
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/mount.h>
 #include <sys/utsname.h>
 
@@ -6,6 +8,7 @@
 #include <regex>
 
 #include "initlib.h"
+#include "fat.h"
 
 class MyInit : public Init {
   bool is_installer();
@@ -67,11 +70,50 @@ void MyInit::mount_boot(const Partition& boot_partition,
     }
     umount(temp_ro_mount);
   } else {
+    bool do_mkfs = false;
+    bool do_mkswap = false;
+    auto fd = open(boot_partition.path.c_str(), O_RDWR);
+    if (fd >= 0) {
+      // create data files on the FAT filesystem in fastest way
+      fat_mount(fd);
+      FatFileCreateResult rst = fat_file_create("system.dat", 4294967294L);
+      if (rst == FatFileCreateResult::NOSPACE) {
+        rst = fat_file_create("system.dat", 3221225472L);
+        if (rst == FatFileCreateResult::NOSPACE) {
+          rst = fat_file_create("system.dat", 2147483648L);
+          if (rst == FatFileCreateResult::NOSPACE) {
+            rst = fat_file_create("system.dat", 1073741824L);
+          }
+        }
+      }
+      if (rst == FatFileCreateResult::OK) do_mkfs = true;
+
+      rst = fat_file_create("system.swp", 1073741824L);
+      if (rst == FatFileCreateResult::NOSPACE) {
+        rst = fat_file_create("system.swp", 536870912L);
+        if (rst == FatFileCreateResult::NOSPACE) {
+          rst = fat_file_create("system.swp", 268435456L);
+        }
+      }
+      if (rst == FatFileCreateResult::OK) do_mkswap = true;
+      fat_umount();
+      close(fd);
+    }
     if (mount(boot_partition.path, mountpoint, "vfat", MS_RELATIME, "fmask=177,dmask=077") != 0) {
       std::cout << "Boot partition filesystem corrupted. Attempting repair..." << std::endl;
       repair_fat(boot_partition.path);
       if (mount(boot_partition.path, mountpoint, "vfat", MS_RELATIME, "fmask=177,dmask=077") != 0) {
         RUNTIME_ERROR("mount boot partition");
+      }
+    }
+    if (do_mkfs) {
+      if (mkfs_btrfs(mountpoint / "system.dat") == 0) {
+        std::cout << "RW layer created." << std::endl;
+      }
+    }
+    if (do_mkswap) {
+      if (mkswap(mountpoint / "system.swp") == 0) {
+        std::cout << "Swap file created." << std::endl;
       }
     }
     //std::filesystem::create_directories(mountpoint / "vm");
