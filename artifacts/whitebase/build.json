@@ -1,3 +1,4 @@
 {
-	"packages":["@all","kbd"]
+	"packages":["@all","kbd"],
+	"services":["cronie"]
 }
