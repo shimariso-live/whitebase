@@ -1,4 +1,5 @@
 {
+	"compression":"xz",
 	"packages":["@all","kbd"],
 	"services":["cronie"]
 }
