@@ -24,7 +24,7 @@ wb: wb.cpp libproj.a
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lproj
 
 walbrixd: walbrixd.cpp
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -liniparser4
 
 wg-walbrix: wg-walbrix.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto

@@ -10,14 +10,17 @@
 #include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/xattr.h>
+#include <systemd/sd-bus.h>
+#include <argparse/argparse.hpp>
+#include <iniparser4/iniparser.h>
+
 #include <stdexcept>
 #include <iostream>
 #include <string>
 #include <map>
 #include <set>
 #include <vector>
-#include <systemd/sd-bus.h>
-#include <argparse/argparse.hpp>
+#include <memory>
 
 #include "walbrixd.h"
 
@@ -130,13 +133,22 @@ static pid_t start(const Config& config, const std::string& name)
     struct utsname u_name;
     if (uname(&u_name) < 0) throw std::runtime_error("uname() failed");
 
+    auto ini = std::shared_ptr<dictionary>(std::filesystem::exists(vminipath)? iniparser_load(vminipath.c_str()) : nullptr, iniparser_freedict);
+
     VmType vmtype = VmType::UNKNOWN;
     if (std::filesystem::exists(disk0path)) { // Treat as full virtual
         vmtype = VmType::QEMU;
         auto cdrompath = vmpath / "cdrom.iso";
+        auto memory = ini? iniparser_getint(ini.get(), ":memory", 1024) : 1024;
+        auto vnc_port = ini? iniparser_getint(ini.get(), ":vnc_port", 5900) : 5900;
+        if (vnc_port < 5900 || vnc_port > 5999) {
+            std::cerr << "Specified VNC port is out of range(5900-5999). applying 5900." << std::endl;
+            vnc_port = 5900;
+        }
         program = std::string("qemu-system-") + u_name.machine;
-        args = { "-netdev", "bridge,br=" + config.bridge + ",id=net0", "-device", "virtio-net-pci,netdev=net0", "-monitor", "stdio",
-            "-drive", "file=" + disk0path.string() + ",media=disk", "-rtc", "base=utc,clock=rt", "-m", "1024" };
+        args = { "-M", "q35", "-netdev", "bridge,br=" + config.bridge + ",id=net0", "-device", "virtio-net-pci,netdev=net0", "-monitor", "stdio",
+            "-drive", "file=" + disk0path.string() + ",media=disk", "-rtc", "base=utc,clock=rt", "-m", std::to_string(memory),
+            "-vnc", (std::string)"0.0.0.0:" + std::to_string(vnc_port - 5900), "-vga", "virtio", "-usb", "-device", "usb-tablet", "-device", "virtio-keyboard" };
         if (std::filesystem::exists(cdrompath)) {
             args.push_back("-cdrom");
             args.push_back(cdrompath);
@@ -144,7 +156,7 @@ static pid_t start(const Config& config, const std::string& name)
         if (std::filesystem::exists("/dev/kvm")) {
             args.push_back("-enable-kvm");
         }
-    } else if (std::filesystem::exists(vminipath)) { // Xen domain
+    } else if (ini) { // Xen domain
         vmtype = VmType::XEN;
         if (!std::filesystem::exists("/proc/xen/privcmd")) throw VmFormatError("Xen not enabled");
         program = "xendomain";
