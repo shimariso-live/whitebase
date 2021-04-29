@@ -16,3 +16,4 @@ dev-cpp/picojson
 dev-cpp/pstreams
 dev-cpp/argparse
 media-libs/mesa
+x11-libs/libdrm
