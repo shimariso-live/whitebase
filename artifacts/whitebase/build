@@ -3,9 +3,6 @@ set -e
 VERSION=`file -L /boot/kernel| sed 's/^.\+ version \([^ ]\+\)\s.\+$/\1/'|sed 's/-gentoo//'`
 sed -i "s/__VERSION__/$VERSION/g" /boot/grub/grub.cfg
 
-sed -i 's/snapshot_autoextend_threshold = 100/snapshot_autoextend_threshold = 80/' /etc/lvm/lvm.conf
-sed -i 's/use_lvmetad = 0/use_lvmetad = 1/' /etc/lvm/lvm.conf
-
 # services preferred by installer/rescue env
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-networkd.service
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-resolved.service

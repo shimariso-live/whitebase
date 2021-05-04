@@ -1,0 +1,13 @@
+[Unit]
+Description=Weston Terminal
+Requires=display-manager.service
+After=display-manager.service
+
+[Service]
+Environment=XDG_RUNTIME_DIR=/run/weston
+Environment=HOME=/root
+WorkingDirectory=/root
+ExecStart=/usr/bin/weston-terminal
+
+[Install]
+WantedBy=graphical.target

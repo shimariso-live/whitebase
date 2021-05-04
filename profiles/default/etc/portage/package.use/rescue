@@ -1,0 +1,11 @@
+dev-libs/weston -X rdp
+x11-libs/gtk+ -X wayland
+media-libs/libepoxy -X
+net-libs/webkit-gtk -X -opengl -geolocation wayland gles2-only
+media-libs/gst-plugins-base -X -opengl wayland gles2
+media-libs/harfbuzz icu
+app-crypt/gcr gtk
+app-crypt/pinentry gnome-keyring
+net-misc/eventd -X fbcon
+net-misc/freerdp openh264
+

@@ -6,7 +6,7 @@ popd
 
 build-kernel
 
-emerge -uDN -bk --binpkg-respect-use=y --exclude='sys-kernel/*' world @all
+emerge -uDN -bk --binpkg-respect-use=y --exclude='sys-kernel/*' world @common @walbrix @rescue
 
 mkdir -p /tmp/initramfs
 

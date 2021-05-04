@@ -1,5 +1,5 @@
 {
 	"compression":"xz",
-	"packages":["@all","kbd"],
+	"packages":["@common","@walbrix"],
 	"services":["cronie"]
 }

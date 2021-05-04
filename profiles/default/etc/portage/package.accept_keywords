@@ -17,3 +17,9 @@ dev-cpp/pstreams
 dev-cpp/argparse
 media-libs/mesa
 x11-libs/libdrm
+
+# rescue
+app-crypt/gcr
+media-libs/libglvnd
+net-misc/eventd
+
