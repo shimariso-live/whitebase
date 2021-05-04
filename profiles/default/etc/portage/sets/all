@@ -1,7 +1,6 @@
 sys-kernel/linux-firmware
 app-emulation/xen
 app-emulation/xen-pvgrub
-x11-libs/libX11 # for xen
 sys-boot/grub
 dev-libs/iniparser
 sys-fs/xfsprogs
