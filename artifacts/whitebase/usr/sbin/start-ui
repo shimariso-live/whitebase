@@ -12,5 +12,10 @@ if [ -d /proc/xen ]; then
 fi
 
 #else
-exec /usr/sbin/wb login tty$TTY
+
+if egrep -q '( |^)systemd\.unit=installer\.target( |$)' /proc/cmdline; then
+	exec /usr/sbin/wb login --installer tty$TTY
+else
+	exec /usr/sbin/wb login tty$TTY
+fi
 
