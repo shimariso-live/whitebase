@@ -4,18 +4,25 @@ TTY=1
 
 export XDG_RUNTIME_DIR
 
+/usr/sbin/wait-for-display || exit 1 # wait for physical display to be connected
+
+if egrep -q '( |^)systemd\.unit=installer\.target( |$)' /proc/cmdline; then
+	exec /usr/sbin/wb login --installer tty$TTY
+fi
+
+#else
+if [ `cut -f 2,3 -d ' ' /proc/mounts | egrep '^\/run\/initramfs\/rw' | cut -f 2 -d ' '` == "tmpfs" ]; then
+	LANG=ja_JP.utf8
+	HOME=/root
+	exec /usr/bin/weston-terminal
+fi
+
 if [ -d /proc/xen ]; then
 	LANG=ja_JP.utf8
-	SHELL=/usr/sbin/textui
-	export SHELL LANG
-	exec /usr/bin/weston-terminal
+	exec /usr/bin/weston-terminal --shell=/usr/sbin/textui
 fi
 
 #else
 
-if egrep -q '( |^)systemd\.unit=installer\.target( |$)' /proc/cmdline; then
-	exec /usr/sbin/wb login --installer tty$TTY
-else
-	exec /usr/sbin/wb login tty$TTY
-fi
+exec /usr/sbin/wb login tty$TTY
 

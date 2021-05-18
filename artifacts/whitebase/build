@@ -11,10 +11,11 @@ sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.targ
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/zabbix-agentd.service
 
 touch /usr/sbin/install-system-image
-touch /usr/sbin//expand-rw-layer
 touch /usr/sbin/do-with-lvm-snapshot
 touch /usr/sbin/rpmbootstrap
 touch /usr/sbin/genbootstrap
+
+g++ -std=c++2a -o /usr/sbin/wait-for-display /usr/src/wait-for-display.cpp -lwayland-client
 
 #/etc/udev/hwdb.bin
 #/usr/bin/cpuid2cpuflags
@@ -26,6 +27,8 @@ touch /usr/sbin/genbootstrap
 cd /usr/src/walbrix
 make
 make install
+
+mkdir -p /var/vm/\@default
 
 systemctl enable mdmonitor zram_swap walbrixd ui
 

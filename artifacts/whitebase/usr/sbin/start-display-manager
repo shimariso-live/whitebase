@@ -11,4 +11,3 @@ mkdir -p $XDG_RUNTIME_DIR
 export XDG_RUNTIME_DIR
 
 exec /usr/bin/weston --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
-
