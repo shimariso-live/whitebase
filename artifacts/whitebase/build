@@ -30,5 +30,5 @@ make install
 
 mkdir -p /var/vm/\@default
 
-systemctl enable mdmonitor zram_swap walbrixd ui
+systemctl enable mdmonitor walbrixd ui
 
