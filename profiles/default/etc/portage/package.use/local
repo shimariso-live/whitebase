@@ -37,11 +37,16 @@ app-emulation/xen-tools api pygrub xend hvm -system-qemu -ocaml python -ovmf
 sys-apps/kexec-tools lzma xen
 sys-cluster/drbd-utils xen
 
+# xen's qemu
+x11-libs/gtk+ X wayland
+x11-libs/cairo X
+media-libs/libglvnd X
+
 # wbui
 dev-libs/weston -X desktop headless launch -rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp fbdev
-media-libs/mesa -X wayland classic dri3 egl gallium gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
+media-libs/mesa X wayland classic dri3 egl gallium gles1 gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
 x11-libs/libdrm video_cards_vmware
-media-libs/libsdl2 -X gles2 alsa wayland cpu_flags_x86_3dnow
+media-libs/libsdl2 -X gles1 gles2 alsa wayland cpu_flags_x86_3dnow
 media-libs/sdl2-image jpeg png webp
 media-libs/sdl2-mixer mp3 vorbis
 
