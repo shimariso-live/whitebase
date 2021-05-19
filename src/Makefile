@@ -47,4 +47,4 @@ install: wb walbrixd walbrixd.service walbrixd.conf wg-walbrix textui xendomain 
 	cp -a messages.mo /usr/share/locale/ja/LC_MESSAGES/
 
 clean:
-	rm -f $(BINS) $(OBJS) libproj.a wb walbrixd wg-walbrix
+	rm -f $(BINS) $(OBJS) libproj.a wb walbrixd wg-walbrix xendomain
