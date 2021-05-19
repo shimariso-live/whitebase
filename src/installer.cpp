@@ -260,20 +260,22 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         auto efi_boot = mnt / "efi/boot";
         std::filesystem::create_directories(efi_boot);
         exec_command("grub-mkimage", {"-p", "/boot/grub", "-o", (efi_boot / "bootx64.efi").string(), "-O", "x86_64-efi", 
-            "xfs","fat","part_gpt","part_msdos","normal","linux","echo","all_video","test","multiboot","multiboot2","search","sleep","iso9660","gzio",
+            "xfs","btrfs","fat","part_gpt","part_msdos","normal","linux","echo","all_video","test","multiboot","multiboot2","search","sleep","iso9660","gzio",
             "lvm","chain","configfile","cpuid","minicmd","gfxterm_background","png","font","terminal","squash4","loopback","videoinfo","videotest",
             "blocklist","probe","efi_gop","efi_uga", "keystatus"});
         if (bios_compatible) {
             std::cout << MSG("Installing BIOS bootloader") << std::endl;
             exec_command("grub-install", {"--target=i386-pc", "--recheck", std::string("--boot-directory=") + (mnt / "boot").string(),
-                "--modules=xfs fat part_msdos normal linux echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
+                "--modules=xfs btrfs fat part_msdos normal linux echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
                 disk.string()});
         } else {
             std::cout << MSG("This system will be UEFI-only as this disk cannot be treated by BIOS") << std::endl;
         }
+        auto grub_dir = mnt / "boot/grub";
+        std::filesystem::create_directories(grub_dir);
         std::cout << MSG("Creating boot configuration file") << std::endl;
         {
-            std::ofstream grubcfg(mnt / "boot/grub/grub.cfg");
+            std::ofstream grubcfg(grub_dir / "grub.cfg");
             if (grubcfg.fail()) throw std::runtime_error("ofstream('/boot/grub/grub.cfg')");
             grubcfg << "insmod echo\ninsmod linux\ninsmod cpuid\n"
                 << "set BOOT_PARTITION=$root\n"
