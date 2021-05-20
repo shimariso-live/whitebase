@@ -1,5 +1,5 @@
 {
 	"compression":"xz",
-	"packages":["@common","@walbrix","pango"],
+	"packages":["@all"],
 	"services":["cronie"]
 }

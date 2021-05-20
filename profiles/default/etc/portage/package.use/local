@@ -29,11 +29,11 @@ sys-fs/lvm2 -readline systemd -thin udev
 net-misc/rsync xxhash
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
-app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png -pulseaudio -python -seccomp -usb -vhost-net vnc xattr -opengl -virgl -xfs -xkb -qemu_softmmu_targets_i386 -qemu_user_targets_i386
+app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png xen -pulseaudio -python -seccomp -usb -vhost-net vnc xattr -opengl -virgl xfs -xkb -qemu_softmmu_targets_i386 -qemu_user_targets_i386
 
 # xen
 app-emulation/xen efi
-app-emulation/xen-tools api pygrub xend hvm -system-qemu -ocaml python -ovmf
+app-emulation/xen-tools api pygrub xend hvm -qemu system-qemu -ocaml python -ovmf
 sys-apps/kexec-tools lzma xen
 sys-cluster/drbd-utils xen
 
