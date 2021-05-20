@@ -1,10 +1,16 @@
 #!/bin/sh
 XDG_RUNTIME_DIR=/run/weston
 TTY=1
+HOME=/root
 
-export XDG_RUNTIME_DIR
+. /etc/locale.conf
+
+export XDG_RUNTIME_DIR LANG HOME
+
 
 /usr/sbin/wait-for-display || exit 1 # wait for physical display to be connected
+
+cd $HOME
 
 if egrep -q '( |^)systemd\.unit=installer\.target( |$)' /proc/cmdline; then
 	exec /usr/sbin/wb login --installer tty$TTY
@@ -12,13 +18,10 @@ fi
 
 #else
 if [ `cut -f 2,3 -d ' ' /proc/mounts | egrep '^\/run\/initramfs\/rw' | cut -f 2 -d ' '` == "tmpfs" ]; then
-	LANG=ja_JP.utf8
-	HOME=/root
 	exec /usr/bin/weston-terminal
 fi
 
 if [ -d /proc/xen ]; then
-	LANG=ja_JP.utf8
 	exec /usr/bin/weston-terminal --shell=/usr/sbin/textui
 fi
 
