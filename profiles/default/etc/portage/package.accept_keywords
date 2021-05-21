@@ -4,6 +4,7 @@ sys-apps/hwids
 net-misc/usbip
 sys-fs/bcache-tools
 net-analyzer/snort
+sys-process/cronie
 
 # Xen
 app-emulation/xen
