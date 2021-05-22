@@ -1,5 +1,5 @@
 {
 	"compression":"xz",
-	"packages":["@all"],
+	"packages":["@all","@genpack-install"],
 	"services":["cronie"]
 }
