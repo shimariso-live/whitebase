@@ -38,7 +38,7 @@ net-fs/cifs-utils
 #sys-fs/xfsdump
 sys-fs/cryptsetup
 sys-block/nbd
-sys-apps/rescan-scsi-bus
+sys-apps/sg3_utils
 sys-apps/hdparm
 sys-fs/ddrescue
 sys-fs/safecopy
@@ -78,7 +78,6 @@ sys-block/zram-init
 net-misc/socat
 sys-process/iotop
 app-emulation/xen
-app-emulation/xen-pvgrub
 dev-libs/openssl-compat
 app-benchmarks/stress
 app-admin/sudo
