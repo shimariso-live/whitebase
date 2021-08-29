@@ -21,7 +21,7 @@ void restore_term()
     tcsetattr(STDIN_FILENO, TCSANOW, &old_term);
 }
 
-int connect(const char* vmname)
+int connect(const char* vmname, const std::string& socket_name = "serial.sock")
 {
     struct sockaddr_un sockaddr;
     memset(&sockaddr, 0, sizeof(sockaddr));
@@ -30,7 +30,10 @@ int connect(const char* vmname)
     if (sock < 0) throw std::runtime_error("Cannot create socket");
 
     sockaddr.sun_family = AF_UNIX;
-    strcpy(sockaddr.sun_path, (WALBRIXD_CONSOLE_SOCKET_BASE_DIR / vmname).c_str());
+    std::filesystem::path run_root("/run/vm");
+    auto vm_root = run_root / vmname;
+    auto serial_socket = vm_root / socket_name;
+    strcpy(sockaddr.sun_path, serial_socket.c_str());
 
     if (connect(sock, (const struct sockaddr *)&sockaddr, sizeof(sockaddr)) < 0) {
         close(sock);
@@ -51,15 +54,17 @@ int send_window_size(int fd, unsigned short rows, unsigned short cols)
     return write(fd, cmd_window_size, sizeof(cmd_window_size));
 }
 
-int console(const char* vmname)
+int console(const char* vmname, const std::string& socket_name)
 {
-    int sock = connect(vmname);
+    int sock = connect(vmname, socket_name);
 
+    /*
     // send window size
     struct winsize winsz;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &winsz) >= 0) {
         send_window_size(sock, winsz.ws_row, winsz.ws_col);
     }
+    */
 
     // init terminal
     if (tcgetattr(STDIN_FILENO, &old_term) >= 0) {
@@ -107,6 +112,11 @@ out:;
 
     close(sock);
     return 0;
+}
+
+int console(const char* vmname)
+{
+    return console(vmname, "serial.sock");
 }
 
 int console_graphical(const char* vmname)
@@ -168,6 +178,24 @@ out:;
     TTF_Quit();
     SDL_Quit();
     return 0;
+}
+
+int monitor(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("vmname").help("VM name");
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    auto vmname = program.get<std::string>("vmname");
+    return console(vmname.c_str(), "monitor.sock");
 }
 
 int console(const std::vector<std::string>& args)

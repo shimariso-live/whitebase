@@ -6,7 +6,7 @@ HEADERS=$(call rwildcard,,*.h)
 CXXFLAGS ?= -std=c++2a
 LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lxenlight -lxlutil -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm
 
-all: wb walbrixd wg-walbrix messages.mo textui xendomain
+all: wb walbrixd wg-walbrix messages.mo textui xendomain vm
 
 libproj.a: $(OBJS)
 	ar r $@ $(OBJS)
@@ -21,7 +21,7 @@ libproj.a: $(OBJS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lproj
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lsmartcols -lproj
 
 walbrixd: walbrixd.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -liniparser4
@@ -35,11 +35,14 @@ textui: textui.cpp termbox.o
 xendomain: xendomain.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lxenlight -lxentoollog -lxenstore -liniparser4
 
+vm: vm.cpp common.o
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil
+
 messages.mo: messages.po
 	msgfmt -o $@ $<
 
 install: wb walbrixd walbrixd.service walbrixd.conf wg-walbrix textui xendomain wg-walbrix.service wg-walbrix.conf messages.mo
-	cp -a wb walbrixd wg-walbrix textui xendomain /usr/sbin/
+	cp -a wb walbrixd wg-walbrix textui xendomain vm /usr/sbin/
 	cp -a walbrixd.service wg-walbrix.service /lib/systemd/system/
 	cp -a walbrixd.conf wg-walbrix.conf /etc/dbus-1/system.d/
 	mkdir -p /usr/share/wb/themes/default
@@ -47,4 +50,4 @@ install: wb walbrixd walbrixd.service walbrixd.conf wg-walbrix textui xendomain 
 	cp -a messages.mo /usr/share/locale/ja/LC_MESSAGES/
 
 clean:
-	rm -f $(BINS) $(OBJS) libproj.a wb walbrixd wg-walbrix xendomain
+	rm -f $(BINS) $(OBJS) libproj.a wb walbrixd wg-walbrix xendomain vm

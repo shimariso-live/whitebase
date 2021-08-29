@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+sed -i 's/# allow br0/allow br0/' /etc/qemu/bridge.conf
+

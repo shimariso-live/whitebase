@@ -1,10 +1,15 @@
 #include <unistd.h>
 #include <pty.h>
+#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
+#include <sys/file.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <security/pam_appl.h>
 #include <security/pam_misc.h>
+#include <libsmartcols/libsmartcols.h>
 
 #include <fstream>
 
@@ -18,6 +23,7 @@
 #include "status.h" 
 #include "shutdown.h"
 #include "installer.h"
+#include "common.h"
 
 std::shared_ptr<SDL_Surface> create_transparent_surface(int w, int h)
 {
@@ -26,6 +32,74 @@ std::shared_ptr<SDL_Surface> create_transparent_surface(int w, int h)
 
 int console(const char* vmname);
 int console(const std::vector<std::string>& args);
+int monitor(const std::vector<std::string>& args);
+
+static bool is_running(const std::string& vmname)
+{
+    std::filesystem::path run_root("/run/vm");
+    auto run_vm = run_root / vmname;
+    auto serial_sock = run_vm / "serial.sock";
+    if (!std::filesystem::exists(serial_sock) || !std::filesystem::is_socket(serial_sock)) return false;
+    auto fd = open(run_vm.c_str(), O_RDONLY, 0);
+    if (fd < 0) return false;
+    bool running = (flock(fd, LOCK_EX|LOCK_NB) < 0 && errno == EWOULDBLOCK);
+    close(fd);
+    return running;
+}
+
+static std::map<std::string,bool> list()
+{
+    std::filesystem::path vm_root("/var/vm"), run_root("/run/vm");
+    std::map<std::string,bool> vms;
+    if (std::filesystem::exists(vm_root) && std::filesystem::is_directory(vm_root)) {
+        for (const auto& d : std::filesystem::directory_iterator(vm_root)) {
+            if (!d.is_directory()) continue;
+            auto name = d.path().filename().string();
+            if (name[0] != '@') {
+                vms[name] = false;
+            }
+        }
+    }
+    if (std::filesystem::exists(run_root) && std::filesystem::is_directory(run_root)) {
+        for (const auto& d : std::filesystem::directory_iterator(run_root)) {
+            if (is_running(d.path().filename().string())) vms[d.path().filename().string()] = true;
+        }
+    }
+    // TODO: use yajl to get details via qmp https://lloyd.github.io/yajl/
+    return vms;
+}
+
+static bool is_autostart(const std::string& vmname)
+{
+    std::filesystem::path multi_user_target_wants("/etc/systemd/system/multi-user.target.wants");
+    return std::filesystem::exists(multi_user_target_wants / (std::string("vm@") + vmname + ".service"));
+}
+
+static int list(const std::vector<std::string>& args)
+{
+    auto vms = list();
+
+    std::shared_ptr<libscols_table> table(scols_new_table(), scols_unref_table);
+    if (!table) throw std::runtime_error("scols_new_table() failed");
+    scols_table_new_column(table.get(), "NAME", 0.1, 0);
+    scols_table_new_column(table.get(), "RUNNING", 0.1, SCOLS_FL_RIGHT);
+    scols_table_new_column(table.get(), "AUTOSTART", 0.1, SCOLS_FL_RIGHT);
+    auto sep = scols_table_new_line(table.get(), NULL);
+    scols_line_set_data(sep, 0, "--------");
+    scols_line_set_data(sep, 1, "-------");
+    scols_line_set_data(sep, 2, "---------");
+
+    for (const auto& i:vms) {
+        auto line = scols_table_new_line(table.get(), NULL);
+        if (!line) throw std::runtime_error("scols_table_new_line() failed");
+        scols_line_set_data(line, 0, i.first.c_str());
+        scols_line_set_data(line, 1, i.second? "*" : "");
+        scols_line_set_data(line, 2, is_autostart(i.first)? "yes":"no");
+    }
+    scols_print_table(table.get());
+
+    return 0;
+}
 
 int start(const std::vector<std::string>& args)
 {
@@ -42,34 +116,88 @@ int start(const std::vector<std::string>& args)
     }
 
     auto vmname = program.get<std::string>("vmname");
-    
-    auto pid = fork();
-    if (pid < 0) throw std::runtime_error("fork() failed");
-
-    if (!pid) { // child process
-        execlp("busctl", "busctl", "--system", "call", 
-            WALBRIXD_SERVICE_NAME, WALBRIXD_OBJECT_PATH, WALBRIXD_INTERFACE_NAME, 
-            "Start", "s", vmname.c_str(), NULL
-        );
+    if (is_running(vmname)) {
+        std::cerr << vmname << " is already running" << std::endl;
+        return 1;
     }
 
-    //else (parent process)
-    int status;
-    waitpid(pid, &status, 0); // wait for child process
-
-    if (status == 0 && program.get<bool>("--console")) {
-        return console(vmname.c_str());
+    auto rst = call({"systemctl", "start", std::string("vm@") + vmname});
+    if (rst == 0) {
+        if (!is_running(vmname)) {
+            std::cerr << vmname << " not started(due to some error?)" << std::endl;
+            return 1;
+        }
+        //else
+        if (program.get<bool>("--console")) {
+            return console(vmname.c_str());
+        }
     }
 
-    //else
-    return WEXITSTATUS(status);
+    return rst;
 }
 
 static int stop(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
+    program.add_argument("--console", "-c").help("Imeddiately connect to console").default_value(false).implicit_value(true);
+    program.add_argument("--force", "-f").help("Force kill vm").default_value(false).implicit_value(true);
+    program.add_argument("vmname").help("VM name (@all to all running VMs)");
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    bool enter_console = program.get<bool>("--console");
+    bool force = program.get<bool>("--force");
+    auto vmname = program.get<std::string>("vmname");
+    if (vmname == "@all") {
+        if (enter_console) std::cout << "--console ignored." << std::endl;
+        auto vms = list();
+        for (const auto& i:vms) {
+            if (!i.second) continue;
+            std::cout << (force? "Forcefully stopping " : "Stopping ") << i.first << std::endl;
+            check_call({"systemctl", force? "kill":"stop", "--no-block", std::string("vm@") + i.first});
+        }
+    } else {
+        if (!is_running(vmname)) {
+            std::cerr << vmname << " is not running" << std::endl;
+            return 1;
+        }
+        
+        check_call({"systemctl", program.get<bool>("--force")? "kill":"stop", "--no-block", std::string("vm@") + vmname});
+        if (enter_console) {
+            return console(vmname.c_str());
+        }
+    }
+
+    return 0;
+}
+
+static void send_qmp_command(const std::filesystem::path& socket_path, const std::string& command)
+{
+    with_socket(socket_path, [&command](int fd) {
+        static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}";
+        if (write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd)) < 0) {
+            throw std::runtime_error("qmp write(qmp_capabilities_cmd) failed");
+        }
+        if (write(fd, command.c_str(), command.length()) < 0) {
+            throw std::runtime_error("qmp write(command) failed");
+        }
+    });
+}
+
+static int restart(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("--console", "-c").help("Imeddiately connect to console").default_value(false).implicit_value(true);
+    program.add_argument("--force", "-f").help("Force reset vm").default_value(false).implicit_value(true);
     program.add_argument("vmname").help("VM name");
-    // --force not implemented yet
+
     try {
         program.parse_args(args);
     }
@@ -80,23 +208,23 @@ static int stop(const std::vector<std::string>& args)
     }
     
     auto vmname = program.get<std::string>("vmname");
-    
-    execlp("busctl", "busctl", "--system", "call", 
-        WALBRIXD_SERVICE_NAME, WALBRIXD_OBJECT_PATH, WALBRIXD_INTERFACE_NAME, 
-        "Stop", "s", vmname.c_str(), NULL
-    );
+    if (!is_running(vmname)) {
+        std::cerr << vmname << " is not running" << std::endl;
+        return 1;
+    }
+
+    if (program.get<bool>("--force")) {
+        send_qmp_command(vmname, "{ \"execute\": \"system_reset\"}");
+    } else {
+        check_call({"systemctl", "restart", std::string("vm@") + vmname});
+    }
+
+    if (program.get<bool>("--console")) {
+        return console(vmname.c_str());
+    }
 
     return 0;
-}
 
-static int list(const std::vector<std::string>& args)
-{
-    execlp("busctl", "busctl", "--system", "call", 
-        WALBRIXD_SERVICE_NAME, WALBRIXD_OBJECT_PATH, WALBRIXD_INTERFACE_NAME, 
-        "List", NULL
-    );
-
-    return 0;
 }
 
 int autostart(const std::vector<std::string>& args)
@@ -116,17 +244,13 @@ int autostart(const std::vector<std::string>& args)
     auto vmname = program.get<std::string>("vmname");
     auto action = program.get<std::string>("action");
 
-    auto rst = with_vmdir<int>(vmname, [&action](auto vmdir) {
+    auto rst = with_vmdir<int>(vmname, [&vmname,&action](auto vmdir) {
         if (action == "show") {
-            char c;
-            bool on = (getxattr(vmdir.path().c_str(), WALBRIX_XATTR_AUTOSTART, &c, sizeof(c)) >= 0);
-            std::cout << "autostart is " << (on? "on" : "off") << std::endl;
+            std::cout << "autostart is " << (is_autostart(vmname)? "on" : "off") << std::endl;
         } else if (action == "on") {
-            if (setxattr(vmdir.path().c_str(), WALBRIX_XATTR_AUTOSTART, "", 0, 0) < 0)
-                throw std::runtime_error(strerror(errno));
+            check_call({"systemctl","enable",std::string("vm@") + vmname});
         } else if (action == "off") {
-            if (removexattr(vmdir.path().c_str(), WALBRIX_XATTR_AUTOSTART) < 0 && errno != ENODATA)
-                throw std::runtime_error(strerror(errno));
+            check_call({"systemctl","disable",std::string("vm@") + vmname});
         } else {
             std::cerr << "Invalid action specified." << std::endl;
             return -1;
@@ -141,6 +265,42 @@ int autostart(const std::vector<std::string>& args)
     //else
     return rst.value();
 }
+
+static int status(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("vmname").help("VM name");
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    exec({"systemctl", "status", std::string("vm@") + program.get<std::string>("vmname")});
+    return 0;
+}
+
+static int journal(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("--follow", "-f").help("Act like 'tail -f'").default_value(false).implicit_value(true);
+    program.add_argument("vmname").help("VM name");
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    exec({"journalctl", program.get<bool>("--follow")? "-f" : "--pager", "-u", std::string("vm@") + program.get<std::string>("vmname")});
+    return 0; // no reach here, though
+}
+
 
 bool auth(UIContext& uicontext)
 {
@@ -634,8 +794,12 @@ static int login(const std::vector<std::string>& args)
 
 static const std::map<std::string,std::pair<int (*)(const std::vector<std::string>&),std::string> > subcommands {
   {"console", {console, "Enter VM console"}},
+  {"monitor", {monitor, "Enter VM monitor"}},
   {"start", {start, "Start VM"}},
   {"stop", {stop, "Stop VM"}},
+  {"restart", {restart, "Restart VM"}},
+  {"status", {status, "Show VM status using 'systemctl status'"}},
+  {"journal", {journal, "Show VM journal using 'journalctl'"}},
   {"autostart", {autostart, "Enable/Disable autostart"}},
   {"list", {list, "List VM"}},
   {"login", {login, "Show title screen(executed by systemd)"}},

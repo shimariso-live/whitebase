@@ -30,5 +30,5 @@ make install
 
 mkdir -p /var/vm/\@default
 
-systemctl enable mdmonitor walbrixd ui
+systemctl enable mdmonitor ui
 

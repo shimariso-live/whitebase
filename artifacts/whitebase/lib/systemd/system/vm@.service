@@ -1,0 +1,13 @@
+[Unit]
+Description=Virtual Machine for %I
+Requires=local-fs.target
+After=local-fs.target
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/vm %i
+KillMode=mixed
+TimeoutStopSec=180
+
+[Install]
+WantedBy=multi-user.target

@@ -72,6 +72,7 @@ mail-mta/ssmtp
 net-vpn/openvpn
 dev-vcs/git
 dev-libs/weston
+dev-util/wayland-scanner
 media-fonts/vlgothic
 app-misc/tmux
 sys-block/zram-init
@@ -82,6 +83,7 @@ dev-libs/openssl-compat
 app-benchmarks/stress
 app-admin/sudo
 app-benchmarks/stress
+sys-apps/rng-tools
 
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
