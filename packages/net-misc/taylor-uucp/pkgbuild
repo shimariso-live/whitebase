@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
-chgrp dialout /usr/bin/cu /var/lock
-chmod g+w /var/lock
+#mkdir -p /var/lock
+#chgrp dialout /usr/bin/cu /var/lock
+#chmod g+w /var/lock
 chmod +s /usr/bin/cu
