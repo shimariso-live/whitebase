@@ -1,0 +1,12 @@
+dev-libs/atk
+dev-libs/nspr
+dev-libs/nss
+media-fonts/liberation-fonts
+media-fonts/vlgothic
+media-libs/alsa-lib
+net-print/cups
+x11-libs/cairo
+x11-libs/gdk-pixbuf
+x11-libs/gtk+
+x11-libs/libdrm
+

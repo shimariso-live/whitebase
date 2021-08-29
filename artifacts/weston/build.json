@@ -1,0 +1,5 @@
+{
+	"profile":"paravirt",
+	"packages":["@weston"]
+}
+

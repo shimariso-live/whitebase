@@ -1,8 +1,6 @@
 [Match]
-Name=br0
+Name=eth0 host0
 [Network]
 DHCP=yes
 MulticastDNS=yes
 LLMNR=yes
-[Link]
-RequiredForOnline=degraded-carrier

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+useradd -m weston -g users -G wheel
+sed -i 's/^# \(%wheel ALL=(ALL) NOPASSWD: ALL\)$/\1/' /etc/sudoers
+

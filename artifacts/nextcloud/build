@@ -1,0 +1,44 @@
+#!/bin/sh
+set -e
+
+cat << 'EOS' > /tmp/sql
+create database `nextcloud`;
+create user `nextcloud`@localhost;
+grant all privileges on `nextcloud`.* to `nextcloud`@localhost;
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
+echo "Extrtacting Nextcloud..."
+download https://download.nextcloud.com/server/releases/latest-22.tar.bz2 | tar jxf - --strip-components=1 -C /var/www/localhost/htdocs
+
+mkdir /var/lib/nextcloud
+chown -R apache.apache /var/www/localhost /var/lib/nextcloud
+
+mkdir -p /.genpack
+php -r 'include "/var/www/localhost/htdocs/version.php";echo $OC_VersionString;' > /.genpack/nextcloud-version
+
+sed -i 's/^upload_max_filesize.\+$/upload_max_filesize = 512M/' /etc/php/*/php.ini
+sed -i 's/^post_max_size.\+$/post_max_size = 768M/' /etc/php/*/php.ini
+sed -i 's/^memory_limit.\+$/memory_limit=512M/' /etc/php/*/php.ini
+sed -i 's/^;mbstring.func_overload.\+$/mbstring.func_overload=0/' /etc/php/*/php.ini
+sed -i 's/^;always_populate_raw_post_data.\+$/always_populate_raw_post_data=-1/' /etc/php/*/php.ini
+sed -i 's/^;default_charset.\+$/default_charset="UTF-8"/' /etc/php/*/php.ini
+
+# occ command
+gcc -o /usr/sbin/occ /usr/src/occ/occ.c
+
+# libsmbclient-php
+download https://pecl.php.net/get/smbclient-1.0.6.tgz > /tmp/smbclient.tgz
+pecl install /tmp/smbclient.tgz
+
+PHP_CLI_DIR=/etc/php/cli-`eselect php show cli`
+PHP_APACHE2_DIR=/etc/php/apache2-`eselect php show apache2`
+
+echo "extension=smbclient.so" > $PHP_CLI_DIR/ext/smbclient.ini
+echo "extension=smbclient.so" > $PHP_APACHE2_DIR/ext/smbclient.ini
+
+ln -s ../ext/smbclient.ini $PHP_CLI_DIR/ext-active/smbclient.ini
+ln -s ../ext/smbclient.ini $PHP_APACHE2_DIR/ext-active/smbclient.ini
+
+echo "$SMBCLIENT_URL" > /.genpack/php-smbclient-url

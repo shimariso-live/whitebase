@@ -1,0 +1,37 @@
+#!/bin/sh
+set -e
+
+mkdir -p /boot/grub
+echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
+
+download https://www.redmine.org/releases/redmine-4.2.2.tar.gz | tar zxf - --strip-components=1 -C /var/www/localhost/htdocs
+
+chown -R apache.apache /var/www/localhost
+rm -rf /usr/local/lib64/ruby/gems/*/cache
+
+cat << 'EOS' > /tmp/sql
+create database `redmine`;
+create user `redmine`@localhost;
+grant all privileges on `redmine`.* to `redmine`@localhost;
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
+echo 'export RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production REDMINE_LANG=ja' >> /etc/profile.env
+
+export RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production REDMINE_LANG=ja
+
+cd /var/www/localhost/htdocs
+bundle install
+rake generate_secret_token
+
+cat << 'EOS' > /tmp/sql
+update users set language='ja' where id=1;
+insert into settings(name,value,updated_on) values('default_language','ja',now());
+EOS
+
+with-mysql 'rake db:migrate' 'rake redmine:load_default_data' 'mysql -u redmine redmine < /tmp/sql'
+
+# setup apache
+sed -i 's/root@localhost/redmine@example.com/' /etc/apache2/vhosts.d/default_vhost.include
+sed -i 's/^DocumentRoot "\/var\/www\/localhost\/htdocs"$/DocumentRoot "\/var\/www\/localhost\/htdocs\/public"/' /etc/apache2/vhosts.d/default_vhost.include

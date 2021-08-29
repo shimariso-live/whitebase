@@ -1,0 +1,7 @@
+{
+	"profile":"paravirt",
+	"description":"The 'Samba only' appliance",
+	"packages":["@samba"],
+	"services":["smb","nmb","cronie"],
+	"outfile":"samba.squashfs"
+}

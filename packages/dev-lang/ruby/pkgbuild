@@ -1,0 +1,2 @@
+#!/bin/sh
+touch -h /usr/bin/ruby /usr/bin/erb /usr/bin/irb

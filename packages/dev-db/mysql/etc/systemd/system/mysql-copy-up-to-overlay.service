@@ -1,0 +1,8 @@
+[Unit]
+Description=Copy-up MySQL's data directory to overlay
+Before=mysqld.service
+
+[Service]
+ExecStart=/usr/sbin/mysql-copy-up-to-overlay
+Type=oneshot
+RemainAfterExit=no

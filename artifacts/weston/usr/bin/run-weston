@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ ! -f "$HOME/.rdp/weston.key" ]; then
+  mkdir -p $HOME/.rdp
+  winpr-makecert -rdp -n weston -path $HOME/.rdp > /dev/null
+fi
+exec weston --rdp-tls-cert=$HOME/.rdp/weston.crt --rdp-tls-key=$HOME/.rdp/weston.key

@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+sed -i 's/-D SSL//' /etc/conf.d/apache2
+sed -i 's/^\(APACHE2_OPTS=.*\)\"$/\1 -D PROXY -D DAV"/' /etc/conf.d/apache2
+sed -i 's/^\(APACHE2_OPTS=.*\)\"$/\1 -D AUTHNZ_EXTERNAL"/' /etc/conf.d/apache2
+sed -i 's/^NoNewPrivileges=true$/NoNewPrivileges=false/' /lib/systemd/system/apache2.service
+sed -i 's/^\(LogFormat\s.\+\)%h\(.\+\)$/\1%a\2/' /etc/apache2/modules.d/00_mod_log_config.conf
+
+sed -i 's/\/etc\/init\.d\/apache2 reload /\/bin\/systemctl reload apache2 /' /etc/logrotate.d/apache2
+
+sed -i 's/%h/%a/' /etc/apache2/modules.d/00_mod_log_config.conf
+sed -i 's/^\(CustomLog .\+\) common$/\1 combined/' /etc/apache2/modules.d/00_mod_log_config.conf

@@ -1,0 +1,10 @@
+>=dev-lang/python-3.10
+<dev-lang/python-3.9
+<dev-lang/ruby-2.6
+<dev-ruby/public_suffix-4
+>=dev-db/mysql-8
+>=dev-lang/php-7.4
+<dev-lang/php-7.3
+>=dev-lang/lua-5.3
+>=dev-util/ragel-7
+>=x11-libs/pango-1.48.7 # for pango's circular dep

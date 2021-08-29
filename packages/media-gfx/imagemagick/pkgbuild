@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-7/policy.xml
+sed -i 's/<!-- <policy domain="module" rights="none" pattern="{PS,PDF,XPS}" \/> -->/<policy domain="module" rights="read|write" pattern="{PS,PDF,XPS}" \/>/' /etc/ImageMagick-7/policy.xml

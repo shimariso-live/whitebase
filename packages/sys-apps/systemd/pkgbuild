@@ -1,0 +1,3 @@
+#!/bin/sh
+sed -i 's/^#FallbackNTP=.*$/FallbackNTP=time.google.com ntp.nict.jp 133.243.238.163 133.243.238.164 133.243.238.243 133.243.238.244 2001:df0:232:eea0::fff3 2001:df0:232:eea0::fff4/' /etc/systemd/timesyncd.conf
+

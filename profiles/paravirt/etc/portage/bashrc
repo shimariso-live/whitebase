@@ -1,0 +1,18 @@
+setup()
+{
+case "${CATEGORY}/${PN}" in
+	net-analyzer/tcpdump)
+		getent group tcpdump || groupadd -g 104 tcpdump
+		getent passwd tcpdump || useradd -c "" -d /dev/null -M -u 104 -g tcpdump -s /sbin/nologin tcpdump
+		;;
+	www-servers/nginx)
+		getent group nginx || groupadd -g 110 nginx
+		getent passwd nginx || useradd -c "" -d /var/lib/nginx -M -u 110 -g nginx -s /sbin/nologin nginx
+		;;
+	*) : ;;
+esac
+}
+
+if [ "$EBUILD_PHASE" == "setup" ]; then
+        setup
+fi

@@ -1,0 +1,7 @@
+{
+	"profile":"paravirt",
+	"packages":["php","dev-db/mysql","mail-mta/postfix","samba","ffmpeg","dev-db/redis","pecl-imagick","btrfs-progs","xfsprogs","pecl-redis","pecl-apcu","net-analyzer/zabbix","trace-cmd","cronie",
+		"mod_authnz_external","logrotate"],
+	"services":["apache2","mysqld","postfix","redis","cronie"],
+	"outfile":"nextcloud.squashfs"
+}

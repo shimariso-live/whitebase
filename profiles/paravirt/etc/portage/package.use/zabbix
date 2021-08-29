@@ -1,0 +1,1 @@
+net-analyzer/zabbix curl -frontend -mysql proxy -server snmp openipmi ssh libxml2 -postgres  sqlite

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+PHP_CLI_DIR=/etc/php/cli-`eselect php show cli`
+echo -e 'apc.enable_cli=1' >> $PHP_CLI_DIR/ext/apcu.ini #https://github.com/owncloud/core/issues/17329
+
+

@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+mkdir -p /boot/grub
+echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
+
+echo "Cloning tt-rss..."
+mv /var/www/localhost/htdocs/config.php /tmp/
+rm -rf /var/www/localhost/htdocs
+git clone --depth 1 https://git.tt-rss.org/fox/tt-rss.git /var/www/localhost/htdocs
+mv /tmp/config.php /var/www/localhost/htdocs/
+
+cat << 'EOS' > /tmp/sql
+create database `tt-rss`;
+create user `tt-rss`@localhost;
+grant all privileges on `tt-rss`.* to `tt-rss`@localhost;
+EOS
+
+cat << 'EOS' > /tmp/sql2
+update ttrss_prefs set def_value='Asia/Tokyo' where pref_name='USER_TIMEZONE';
+EOS
+
+gcc -o /usr/sbin/update /usr/src/update.c
+
+#$sed /var/www/localhost/htdocs/config.php 's/"pgsql"/"mysql"/'
+#$sed /var/www/localhost/htdocs/config.php 's/"fox"/"tt-rss"/'
+#$sed /var/www/localhost/htdocs/config.php 's/"XXXXXX"/""/'
+#$sed /var/www/localhost/htdocs/config.php 's/your\.domain\.dom/example\.com/'
+#$sed /var/www/localhost/htdocs/config.php "s/'http:\/\/example\.org\/tt-rss\/'/(\$_SERVER['HTTPS']? 'https:\/\/' : 'http:\/\/'\) . \$_SERVER['SERVER_NAME'] . '\/'/"
+#$sed /var/www/localhost/htdocs/config.php "s/.*FEED_CRYPT_KEY.*/\tdefine\('FEED_CRYPT_KEY', 'YiIEBwKWOXAWJzNWWMmf3vxy'\);/"
+
+chown -R apache.apache /var/www/localhost
+
+with-mysql 'mysql -u root < /tmp/sql' 'update --update-schema=force-yes' '#mysql -u tt-rss tt-rss < /tmp/sql2'

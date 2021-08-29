@@ -1,0 +1,5 @@
+{
+    "profile":"paravirt",
+    "packages":["@jenkins","@chrome"],
+    "services":["postfix","jenkins","iptables-restore","ip6tables-restore"]
+}

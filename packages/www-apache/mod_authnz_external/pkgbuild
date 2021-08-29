@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+sed -i 's/^\(APACHE2_OPTS=.*\)\"$/\1 -D AUTHNZ_EXTERNAL"/' /etc/conf.d/apache2
+

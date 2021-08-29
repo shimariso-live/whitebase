@@ -1,0 +1,5 @@
+net-fs/samba
+sys-process/cronie
+dev-python/xxhash
+net-vpn/wireguard-tools
+

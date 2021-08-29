@@ -1,0 +1,13 @@
+#!/bin/sh
+JAR_DIR=$HOME/.lib
+CLI_JAR=$JAR_DIR/jenkins-cli.jar
+source /etc/conf.d/jenkins
+JENKINS_URL="http://localhost:$JENKINS_PORT"
+
+if [ ! -f $CLI_JAR ]; then
+	mkdir -p $JAR_DIR
+	curl -o $CLI_JAR $JENKINS_URL/jnlpJars/jenkins-cli.jar || exit 1
+fi
+
+export JENKINS_URL
+java -jar $CLI_JAR $@

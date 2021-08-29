@@ -1,0 +1,12 @@
+dev-lang/php
+dev-db/mysql
+mail-mta/postfix
+sys-fs/btrfs-progs
+sys-fs/xfsprogs
+dev-php/pecl-apcu
+net-analyzer/zabbix
+sys-process/cronie
+www-apache/mod_authnz_external
+app-admin/logrotate
+dev-vcs/git
+

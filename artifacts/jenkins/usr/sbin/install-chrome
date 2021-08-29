@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+curl -o /tmp/chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+deb2targz /tmp/chrome.deb
+ln -sf /opt/google/chrome/chrome /usr/bin/chrome
+rm -f /tmp/chrome.deb
+tar xf /tmp/chrome.tar.xz -C /
+rm -f /tmp/chrome.tar.xz
+
+curl -o /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/90.0.4430.24/chromedriver_linux64.zip
+cd /tmp && unzip chromedriver.zip
+mv chromedriver /usr/bin/
+rm -f /tmp/chromedriver.zip
+

@@ -1,0 +1,9 @@
+#!/bin/sh
+touch -h /usr/bin/php
+touch -h /usr/lib64/apache2/modules/mod_php.so
+touch -h /var/lib/eselect-php/mod_php.conf
+sed -i 's/^;date\.timezone.*$/date.timezone=Asia\/Tokyo/' /etc/php/*/php.ini 
+sed -i 's/;pcre.jit=1$/pcre.jit=0/' /etc/php/*/php.ini # pcre.jit doesn't work nicely with noexec'ed /tmp
+sed -i 's/^upload_max_filesize.\+$/upload_max_filesize = 128M/' /etc/php/apache2-php*/php.ini
+sed -i 's/^post_max_size.\+$/post_max_size = 256M/' /etc/php/apache2-php*/php.ini
+sed -i 's/^\(APACHE2_OPTS=.*\)\"$/\1 -D PHP"/' /etc/conf.d/apache2
