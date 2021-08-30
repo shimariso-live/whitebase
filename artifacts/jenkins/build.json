@@ -1,5 +1,5 @@
 {
     "profile":"paravirt",
-    "packages":["@jenkins","@chrome"],
-    "services":["postfix","jenkins","iptables-restore","ip6tables-restore"]
+    "packages":["@jenkins","@common","@chrome"],
+    "services":["postfix","jenkins","iptables-restore","ip6tables-restore","qemu-guest-agent"]
 }

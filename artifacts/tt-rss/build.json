@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@tt-rss"],
-	"services":["apache2","mysqld","postfix","cronie"]
+	"packages":["@tt-rss","@common"],
+	"services":["apache2","mysqld","postfix","cronie","qemu-guest-agent"]
 }

@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@weston"]
+	"packages":["@weston","@common","qemu-guest-agent"]
 }
 

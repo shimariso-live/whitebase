@@ -423,6 +423,7 @@ int vm(const std::string& name)
     auto monitor_sock = run_dir / "monitor.sock";
     auto qmp_sock = run_dir / "qmp.sock";
     auto serial_sock = run_dir / "serial.sock";
+    auto qga_sock = run_dir / "qga.sock";
 
     std::vector<std::string> virtiofsd_cmdline = {
         "/usr/libexec/virtiofsd","-f","-o","cache=" + std::string(virtiofsd_cache) + ",log_level=" + std::string(debug? "debug" : "warn") 
@@ -437,11 +438,13 @@ int vm(const std::string& name)
         "-m", std::to_string(memory),
         "-smp", "cpus=" + std::to_string(cpus), 
         "-uuid", get_or_generate_uuid(name), 
-        "-object", std::string("memory-backend-memfd,id=mem,size=") + std::to_string(memory) + "M,share=on", "-numa", "node,memdev=mem",
-        "-chardev", std::string("socket,id=char0,path=") + virtiofs_sock.string(),
-        "-monitor", std::string("unix:") + monitor_sock.string() + ",server,nowait",
-        "-serial", std::string("unix:") + serial_sock.string() + ",server,nowait",
-        "-qmp", std::string("unix:") + qmp_sock.string() + ",server,nowait"
+        "-object", "memory-backend-memfd,id=mem,size=" + std::to_string(memory) + "M,share=on", "-numa", "node,memdev=mem",
+        "-chardev", "socket,id=char0,path=" + virtiofs_sock.string(),
+        "-monitor", "unix:" + monitor_sock.string() + ",server,nowait",
+        "-serial", "unix:" + serial_sock.string() + ",server,nowait",
+        "-qmp", "unix:" + qmp_sock.string() + ",server,nowait",
+        "-chardev", "socket,path=" + qga_sock.string() + ",server=on,wait=off,id=qga0", 
+        "-device", "virtio-serial", "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
     };
 
     if (rtc) {
