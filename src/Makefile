@@ -21,7 +21,7 @@ libproj.a: $(OBJS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lsmartcols -lproj
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj
 
 walbrixd: walbrixd.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -liniparser4
@@ -36,7 +36,7 @@ xendomain: xendomain.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lxenlight -lxentoollog -lxenstore -liniparser4
 
 vm: vm.cpp common.o
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil -lyajl
 
 messages.mo: messages.po
 	msgfmt -o $@ $<

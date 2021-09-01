@@ -14,6 +14,7 @@
 #include <fstream>
 
 #include <argparse/argparse.hpp>
+#include <yajl/yajl_tree.h>
 
 #include "walbrixd.h"
 #include "terminal.h"
@@ -47,22 +48,70 @@ static bool is_running(const std::string& vmname)
     return running;
 }
 
-static std::map<std::string,bool> list()
+static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
 {
     std::filesystem::path vm_root("/var/vm"), run_root("/run/vm");
-    std::map<std::string,bool> vms;
+    std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> vms;
     if (std::filesystem::exists(vm_root) && std::filesystem::is_directory(vm_root)) {
         for (const auto& d : std::filesystem::directory_iterator(vm_root)) {
             if (!d.is_directory()) continue;
             auto name = d.path().filename().string();
             if (name[0] != '@') {
-                vms[name] = false;
+                vms[name] = {false,std::nullopt};
             }
         }
     }
     if (std::filesystem::exists(run_root) && std::filesystem::is_directory(run_root)) {
         for (const auto& d : std::filesystem::directory_iterator(run_root)) {
-            if (is_running(d.path().filename().string())) vms[d.path().filename().string()] = true;
+            auto run_dir = d.path();
+            auto name = run_dir.filename().string();
+            if (!is_running(name)) continue;
+            //else
+            std::optional<uint32_t> memory = std::nullopt;
+            auto qmp_sock = run_dir / "qmp.sock";
+            auto qga_sock = run_dir / "qga.sock";
+            if (std::filesystem::exists(qmp_sock) && std::filesystem::is_socket(qmp_sock)) {
+                // query qmp
+                try {
+                    auto fd = connect_unix_socket(qmp_sock);
+                    read_json_object(fd); // skip {"QMP":{}}
+                    static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}\r\n";
+                    write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd));
+                    read_json_object(fd); // skip {"return":{}}
+                    const char* query = "{\"execute\":\"query-memory-size-summary\"}\r\n";
+                    write(fd, query, strlen(query));
+                    auto memory_size_summary = read_json_object(fd);
+                    close(fd);
+                    memory = with_object_property<uint32_t>(memory_size_summary.get(), "return", [](const yajl_val val) {
+                        return with_object_property<uint32_t>(val, "base-memory", [](const yajl_val val) {
+                            return (YAJL_IS_INTEGER(val))? std::make_optional((uint32_t)(YAJL_GET_INTEGER(val) / 1024 / 1024)) : std::nullopt;
+                        });
+                    });
+                }
+                catch (const std::runtime_error& ex) {
+                    std::cerr << ex.what() << std::endl;
+                }
+            }
+            if (std::filesystem::exists(qga_sock) && std::filesystem::is_socket(qga_sock)) {
+                // query qga
+                try {
+                    auto fd = connect_unix_socket(qga_sock);
+                    const char* query = "{\"execute\":\"guest-get-osinfo\"}\r\n";
+                    write(fd, query, strlen(query));
+                    auto os_info = read_json_object(fd);
+                    close(fd);
+                    auto kernel_ver = with_object_property<std::string>(os_info.get(), "return", [](const yajl_val val) {
+                        return with_object_property<std::string>(val, "kernel-release", [](const yajl_val val) {
+                            return YAJL_IS_STRING(val)? std::make_optional(val->u.string) : std::nullopt;
+                        });
+                    });
+                    //std::cout << kernel_ver.value() << std::endl;
+                }
+                catch (const std::runtime_error& ex) {
+                    std::cerr << ex.what() << std::endl;
+                }
+            }
+            vms[name] = {true, memory};
         }
     }
     // TODO: use yajl to get details via qmp https://lloyd.github.io/yajl/
@@ -84,17 +133,21 @@ static int list(const std::vector<std::string>& args)
     scols_table_new_column(table.get(), "NAME", 0.1, 0);
     scols_table_new_column(table.get(), "RUNNING", 0.1, SCOLS_FL_RIGHT);
     scols_table_new_column(table.get(), "AUTOSTART", 0.1, SCOLS_FL_RIGHT);
+    scols_table_new_column(table.get(), "MEMORY", 0.1, SCOLS_FL_RIGHT);
     auto sep = scols_table_new_line(table.get(), NULL);
     scols_line_set_data(sep, 0, "--------");
     scols_line_set_data(sep, 1, "-------");
     scols_line_set_data(sep, 2, "---------");
+    scols_line_set_data(sep, 3, "-------");
 
     for (const auto& i:vms) {
         auto line = scols_table_new_line(table.get(), NULL);
         if (!line) throw std::runtime_error("scols_table_new_line() failed");
         scols_line_set_data(line, 0, i.first.c_str());
-        scols_line_set_data(line, 1, i.second? "*" : "");
+        scols_line_set_data(line, 1, std::get<0>(i.second)? "*" : "");
         scols_line_set_data(line, 2, is_autostart(i.first)? "yes":"no");
+        auto memory = std::get<1>(i.second);
+        scols_line_set_data(line, 3, memory.has_value()? std::to_string(memory.value()).c_str() : "-");
     }
     scols_print_table(table.get());
 
@@ -159,7 +212,7 @@ static int stop(const std::vector<std::string>& args)
         if (enter_console) std::cout << "--console ignored." << std::endl;
         auto vms = list();
         for (const auto& i:vms) {
-            if (!i.second) continue;
+            if (!std::get<0>(i.second)) continue;
             std::cout << (force? "Forcefully stopping " : "Stopping ") << i.first << std::endl;
             check_call({"systemctl", force? "kill":"stop", "--no-block", std::string("vm@") + i.first});
         }

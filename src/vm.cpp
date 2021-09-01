@@ -337,6 +337,43 @@ void with_vm_lock(const std::string& vmname, std::function<void(void)> func)
     });
 }
 
+std::pair<int,std::set<int>/*fds to close*/> poll(const std::map<std::pair<int/*fd*/,short/*event*/>,std::function<bool(int)>>& pollfds, int timeout)
+{
+    std::map<int,short> fdmap;
+    for (const auto& i:pollfds) {
+        if (fdmap.find(i.first.first) == fdmap.end()) fdmap[i.first.first] = i.first.second;
+        else fdmap[i.first.first] |= i.first.second;
+    }
+
+    struct pollfd c_pollfds[fdmap.size()];
+    int idx = 0;
+    for (const auto& i:fdmap) {
+        c_pollfds[idx].fd = i.first;
+        c_pollfds[idx].events = i.second;
+        idx++;
+    }
+    int r = poll(c_pollfds, pollfds.size(), timeout);
+    if (r < 0) throw std::runtime_error("poll() failed");
+
+    std::set<int> fds_to_close;
+    for (int i = 0; i < fdmap.size(); i++) {
+        auto fd = c_pollfds[i].fd;
+        if (c_pollfds[i].revents & POLLIN) {
+            auto func = pollfds.find({fd, POLLIN});
+            if (func != pollfds.end()) {
+                if (func->second(fd)) fds_to_close.insert(fd);
+            }
+        }
+        if (c_pollfds[i].revents & POLLOUT) {
+            auto func = pollfds.find({fd, POLLOUT});
+            if (func != pollfds.end()) {
+                if (func->second(fd)) fds_to_close.insert(fd);
+            }
+        }
+    }
+    return {r, fds_to_close};
+}
+
 int vm(const std::string& name)
 {
     auto vm_dir = vm_root / name, run_dir = run_root / name;
@@ -423,6 +460,7 @@ int vm(const std::string& name)
     auto monitor_sock = run_dir / "monitor.sock";
     auto qmp_sock = run_dir / "qmp.sock";
     auto serial_sock = run_dir / "serial.sock";
+    auto qga_bridge_sock = run_dir / ".qga.sock";
     auto qga_sock = run_dir / "qga.sock";
 
     std::vector<std::string> virtiofsd_cmdline = {
@@ -443,7 +481,7 @@ int vm(const std::string& name)
         "-monitor", "unix:" + monitor_sock.string() + ",server,nowait",
         "-serial", "unix:" + serial_sock.string() + ",server,nowait",
         "-qmp", "unix:" + qmp_sock.string() + ",server,nowait",
-        "-chardev", "socket,path=" + qga_sock.string() + ",server=on,wait=off,id=qga0", 
+        "-chardev", "socket,path=" + qga_bridge_sock.string() + ",server=on,wait=off,id=qga0", 
         "-device", "virtio-serial", "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
     };
 
@@ -566,6 +604,10 @@ int vm(const std::string& name)
         pid_t virtiofsd_pid = 0;
         pid_t qemu_pid = 0;
         time_t qemu_first_shutdown_signaled_time = -1L, qemu_last_shutdown_signaled_time = -1L;
+        int qga_bridge_fd = -1/*connection to qga_bridge_sock*/,
+            qga_server_fd = -1/*qga_sock listening socket*/,
+            qga_client_fd = -1/*ongoing client of qga_sock*/; // TODO: implement
+        std::string qga_bridge_buf;
 
         with_finally_clause([&]() {
             virtiofsd_pid = fork([&virtiofsd_cmdline]() {
@@ -597,15 +639,12 @@ int vm(const std::string& name)
             if (sigfd < 0) throw std::runtime_error("signalfd() failed");
 
             bool qemu_ready_notified = false;
-            struct pollfd pollfds[1];
-            pollfds[0].fd = sigfd;
-            pollfds[0].events = POLLIN;
 
-            int r;
-            while (r = poll(pollfds, 1, qemu_ready_notified? 1000 : 100) >= 0) {
-                if (pollfds[0].revents & POLLIN) {
+            while (true) {
+                std::map<std::pair<int,short>,std::function<bool(int)>> events;
+                events[{sigfd, POLLIN}] = [&qemu_first_shutdown_signaled_time,&qemu_last_shutdown_signaled_time,&qmp_sock,&virtiofsd_pid,&qemu_pid](int fd) {
                     struct signalfd_siginfo info;
-                    if (read(pollfds[0].fd, &info, sizeof(info)) != sizeof(info)) 
+                    if (read(fd, &info, sizeof(info)) != sizeof(info)) 
                         throw std::runtime_error(std::string("read(sigal fd) failed: ") + strerror(errno));
                     //else
                     if ((info.ssi_signo == SIGTERM || info.ssi_signo == SIGINT) && qemu_last_shutdown_signaled_time < 0) {
@@ -626,11 +665,63 @@ int vm(const std::string& name)
                         if (info.ssi_pid == qemu_pid) {
                             std::cout << "QEMU terminated." << std::endl;
                             qemu_pid = 0;
-                            break;
                         }
                     }
+                    return false;
+                };
+                if (qga_bridge_fd >= 0) {
+                    if (qga_server_fd >= 0) {
+                        if (qga_client_fd < 0) {
+                            events[{qga_server_fd, POLLIN}] = [&qga_client_fd](int fd) {
+                                int sock = accept(fd, NULL, NULL);
+                                if (sock >= 0) qga_client_fd = sock;
+                                return false;
+                            };
+                        }
+                        events[{qga_bridge_fd, POLLIN}] = [&qga_client_fd](int fd) {
+                            char buf[1024];
+                            int r = read(fd, buf, sizeof(buf));
+                            if (r < 0) throw std::runtime_error("read() failed");
+                            if (r == 0) return true;
+                            //else
+                            if (qga_client_fd >= 0) write(qga_client_fd, buf, r);
+                            return false;
+                        };
+                    } else {
+                        events[{qga_bridge_fd, POLLIN}] = [&qga_bridge_buf,&qga_server_fd,&qga_sock](int fd) {
+                            read_json_object_stream(fd, qga_bridge_buf, [&qga_server_fd,&qga_sock](const yajl_val tree) {
+                                if (qga_server_fd < 0) qga_server_fd = listen_unix_socket(qga_sock);
+                                return true;
+                            });
+                            return false;
+                        };
+                    }
+                }
+                if (qga_client_fd >= 0) {
+                    events[{qga_client_fd, POLLIN}] = [&qga_bridge_fd](int fd) {
+                        char buf[1024];
+                        int r = read(fd, buf, sizeof(buf));
+                        if (r < 0) throw std::runtime_error("read() failed");
+                        if (r == 0) return true;
+                        //else
+                        if (qga_bridge_fd >= 0) write(qga_bridge_fd, buf, r);
+                        return false;
+                    };
+                }
+                auto r = poll(events, qemu_ready_notified? 1000 : 100);
+
+                if (r.second.find(qga_bridge_fd) != r.second.end()) {
+                    close(qga_bridge_fd);
+                    qga_bridge_fd = -1;
+                    close(qga_server_fd);
+                    qga_server_fd = -1;
+                }
+                if (r.second.find(qga_client_fd) != r.second.end()) {
+                    close(qga_client_fd);
+                    qga_client_fd = -1;
                 }
 
+                if (qemu_pid == 0) break;
                 if (!qemu_ready_notified 
                     && std::filesystem::exists(monitor_sock) && std::filesystem::is_socket(monitor_sock)
                     && std::filesystem::exists(qmp_sock) && std::filesystem::is_socket(qmp_sock)
@@ -638,6 +729,12 @@ int vm(const std::string& name)
                     std::cout << "QEMU is ready(notified to systemd)." << std::endl;
                     sd_notify(0, "READY=1");
                     qemu_ready_notified = true;
+                }
+
+                if (qga_bridge_fd < 0 && std::filesystem::exists(qga_bridge_sock) && std::filesystem::is_socket(qga_bridge_sock)) {
+                    qga_bridge_fd = connect_unix_socket(qga_bridge_sock);
+                    const char* ping_cmd = "{\"execute\":\"guest-ping\"}\r\n";
+                    write(qga_bridge_fd, ping_cmd, strlen(ping_cmd));
                 }
 
                 auto now = time(NULL);
@@ -650,10 +747,12 @@ int vm(const std::string& name)
                     send_qmp_command(qmp_sock, "{ \"execute\": \"system_powerdown\"}");
                     qemu_last_shutdown_signaled_time = now;
                 }
+                
             }
-            if (r < 0) throw std::runtime_error("poll() failed");
         }, [&]()/*finally*/ {
-            if (sigfd >= 0) close(sigfd);
+            for (int fd:{sigfd, qga_client_fd, qga_server_fd, qga_bridge_fd})
+                if (fd >= 0) close(fd);
+            if (std::filesystem::exists(qga_sock)) std::filesystem::remove(qga_sock);
 
             if (qemu_pid > 0) {
                 std::cout << "Terminating QEMU..." << std::endl;
@@ -691,43 +790,6 @@ std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<
         // jumping across scope border in forked process may not be a good idea.
     }
     _exit(-1);
-}
-
-std::pair<int,std::set<int>/*fds to close*/> poll(const std::map<std::pair<int/*fd*/,short/*event*/>,std::function<bool(int)>>& pollfds, int timeout)
-{
-    std::map<int,short> fdmap;
-    for (const auto& i:pollfds) {
-        if (fdmap.find(i.first.first) == fdmap.end()) fdmap[i.first.first] = i.first.second;
-        else fdmap[i.first.first] |= i.first.second;
-    }
-
-    struct pollfd c_pollfds[fdmap.size()];
-    int idx = 0;
-    for (const auto& i:fdmap) {
-        c_pollfds[idx].fd = i.first;
-        c_pollfds[idx].events = i.second;
-        idx++;
-    }
-    int r = poll(c_pollfds, pollfds.size(), timeout);
-    if (r < 0) throw std::runtime_error("poll() failed");
-
-    std::set<int> fds_to_close;
-    for (int i = 0; i < fdmap.size(); i++) {
-        auto fd = c_pollfds[i].fd;
-        if (c_pollfds[i].revents & POLLIN) {
-            auto func = pollfds.find({fd, POLLIN});
-            if (func != pollfds.end()) {
-                if (func->second(fd)) fds_to_close.insert(fd);
-            }
-        }
-        if (c_pollfds[i].revents & POLLOUT) {
-            auto func = pollfds.find({fd, POLLOUT});
-            if (func != pollfds.end()) {
-                if (func->second(fd)) fds_to_close.insert(fd);
-            }
-        }
-    }
-    return {r, fds_to_close};
 }
 
 int vm_nspawn(const std::string& name)
@@ -797,18 +859,7 @@ int vm_nspawn(const std::string& name)
             sigfd = signalfd (-1, &mask, SFD_CLOEXEC);
             if (sigfd < 0) throw std::runtime_error("signalfd() failed");
 
-            serial_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-            if (serial_server_fd < 0) throw std::runtime_error("Unable to create socket for listening");
-            //else
-            struct sockaddr_un sockaddr;
-            memset(&sockaddr, 0, sizeof(sockaddr));
-            sockaddr.sun_family = AF_UNIX;
-            if (std::filesystem::exists(serial_sock)) std::filesystem::remove(serial_sock);
-            strcpy(sockaddr.sun_path, serial_sock.c_str());
-            if (bind(serial_server_fd, (const struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
-                throw std::runtime_error("Unable to bind socket");
-            }
-            if (listen(serial_server_fd, 10) < 0) throw std::runtime_error("Unable to listen socket");
+            serial_server_fd = listen_unix_socket(serial_sock);
             sd_notify(0, "READY=1");
 
             while (true) {
@@ -837,7 +888,7 @@ int vm_nspawn(const std::string& name)
                             serial_client_fd = sock;
                             //std::cout << "Peer accepted." << std::endl;
                         } else {
-                            const char* msg = "Simultaneous connections are not allowed\n";
+                            const char* msg = "Simultaneous connections are not allowed\r\n";
                             write(sock, msg, strlen(msg));
                             close(sock);
                         }
@@ -884,10 +935,8 @@ int vm_nspawn(const std::string& name)
                 }
             }
         }, [&]()/*finally*/ {
-            if (sigfd >= 0) close(sigfd);
-            if (nspawn_fd >= 0) close(nspawn_fd);
-            if (serial_server_fd >= 0) close(serial_server_fd);
-            if (serial_client_fd >= 0) close(serial_client_fd);
+            for (int fd:{sigfd, nspawn_fd, serial_server_fd, serial_client_fd})
+                if (fd >= 0) close(fd);
             if (std::filesystem::exists(serial_sock)) std::filesystem::remove(serial_sock);
             if (nspawn_pid > 0) kill(nspawn_pid, SIGKILL);
             wait(NULL);
