@@ -26,6 +26,8 @@
 #include "installer.h"
 #include "common.h"
 
+const static std::filesystem::path vm_root("/var/vm"), run_root("/run/vm");
+
 std::shared_ptr<SDL_Surface> create_transparent_surface(int w, int h)
 {
     return make_shared(SDL_CreateRGBSurface(0, w, h, 32,0xff, 0xff00, 0xff0000, 0xff000000));
@@ -48,9 +50,42 @@ static bool is_running(const std::string& vmname)
     return running;
 }
 
+static void with_qmp_session(const std::string& name, std::function<void(int)> func, std::function<void(void)> noavail = [](){})
+{
+    auto socket_path = run_root / name / "qmp.sock";
+    if (!std::filesystem::exists(socket_path) || !std::filesystem::is_socket(socket_path)) {
+        noavail();
+        return;
+    }
+    //else
+    with_socket(socket_path, [&func](int fd) {
+        read_json_object(fd); // skip {"QMP":{}}
+        static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}\r\n";
+        if (write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd)) < 0) {
+            throw std::runtime_error("qmp write(qmp_capabilities_cmd) failed");
+        }
+        if (!read_json_object(fd)) {
+            throw std::runtime_error("qmp_capabilities_cmd failed");
+        }
+        func(fd);
+    });
+}
+
+static void with_qga(const std::string& name, std::function<void(int)> func, std::function<void(void)> noavail = [](){})
+{
+    auto socket_path = run_root / name / "qga.sock";
+    if (!std::filesystem::exists(socket_path) || !std::filesystem::is_socket(socket_path)) {
+        noavail();
+        return;
+    }
+    //else
+    with_socket(socket_path, [&func](int fd) {
+        func(fd);
+    });
+}
+
 static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
 {
-    std::filesystem::path vm_root("/var/vm"), run_root("/run/vm");
     std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> vms;
     if (std::filesystem::exists(vm_root) && std::filesystem::is_directory(vm_root)) {
         for (const auto& d : std::filesystem::directory_iterator(vm_root)) {
@@ -68,48 +103,41 @@ static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
             if (!is_running(name)) continue;
             //else
             std::optional<uint32_t> memory = std::nullopt;
-            auto qmp_sock = run_dir / "qmp.sock";
-            auto qga_sock = run_dir / "qga.sock";
-            if (std::filesystem::exists(qmp_sock) && std::filesystem::is_socket(qmp_sock)) {
-                // query qmp
-                try {
-                    auto fd = connect_unix_socket(qmp_sock);
-                    read_json_object(fd); // skip {"QMP":{}}
-                    static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}\r\n";
-                    write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd));
-                    read_json_object(fd); // skip {"return":{}}
+            try {
+                with_qmp_session(name, [&memory](int fd) {
                     const char* query = "{\"execute\":\"query-memory-size-summary\"}\r\n";
                     write(fd, query, strlen(query));
                     auto memory_size_summary = read_json_object(fd);
-                    close(fd);
                     memory = with_object_property<uint32_t>(memory_size_summary.get(), "return", [](const yajl_val val) {
                         return with_object_property<uint32_t>(val, "base-memory", [](const yajl_val val) {
                             return (YAJL_IS_INTEGER(val))? std::make_optional((uint32_t)(YAJL_GET_INTEGER(val) / 1024 / 1024)) : std::nullopt;
                         });
                     });
-                }
-                catch (const std::runtime_error& ex) {
-                    std::cerr << ex.what() << std::endl;
-                }
+                }, []() {
+                    // do nothing when QMP socket is not available
+                });
             }
-            if (std::filesystem::exists(qga_sock) && std::filesystem::is_socket(qga_sock)) {
-                // query qga
-                try {
-                    auto fd = connect_unix_socket(qga_sock);
+            catch (const std::runtime_error& ex) {
+                std::cerr << ex.what() << std::endl;
+            }
+            // query qga
+            try {
+                with_qga(name, [](int fd) {
                     const char* query = "{\"execute\":\"guest-get-osinfo\"}\r\n";
                     write(fd, query, strlen(query));
                     auto os_info = read_json_object(fd);
-                    close(fd);
                     auto kernel_ver = with_object_property<std::string>(os_info.get(), "return", [](const yajl_val val) {
                         return with_object_property<std::string>(val, "kernel-release", [](const yajl_val val) {
                             return YAJL_IS_STRING(val)? std::make_optional(val->u.string) : std::nullopt;
                         });
                     });
                     //std::cout << kernel_ver.value() << std::endl;
-                }
-                catch (const std::runtime_error& ex) {
-                    std::cerr << ex.what() << std::endl;
-                }
+                }, []() {
+                    // do nothing when QGA socket is not available
+                });
+            }
+            catch (const std::runtime_error& ex) {
+                std::cerr << ex.what() << std::endl;
             }
             vms[name] = {true, memory};
         }
@@ -231,19 +259,6 @@ static int stop(const std::vector<std::string>& args)
     return 0;
 }
 
-static void send_qmp_command(const std::filesystem::path& socket_path, const std::string& command)
-{
-    with_socket(socket_path, [&command](int fd) {
-        static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}";
-        if (write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd)) < 0) {
-            throw std::runtime_error("qmp write(qmp_capabilities_cmd) failed");
-        }
-        if (write(fd, command.c_str(), command.length()) < 0) {
-            throw std::runtime_error("qmp write(command) failed");
-        }
-    });
-}
-
 static int restart(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
@@ -267,7 +282,13 @@ static int restart(const std::vector<std::string>& args)
     }
 
     if (program.get<bool>("--force")) {
-        send_qmp_command(vmname, "{ \"execute\": \"system_reset\"}");
+        with_qmp_session(vmname, [](int fd) {
+            const char* cmd = "{ \"execute\": \"system_reset\"}\r\n";
+            write(fd, cmd, strlen(cmd));
+            read_json_object(fd);
+        }, [&vmname]() {
+            throw std::runtime_error("QMP interface is not available for " + vmname);
+        });
     } else {
         check_call({"systemctl", "restart", std::string("vm@") + vmname});
     }
@@ -277,7 +298,74 @@ static int restart(const std::vector<std::string>& args)
     }
 
     return 0;
+}
 
+static int reboot(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("--console", "-c").help("Imeddiately connect to console").default_value(false).implicit_value(true);
+    program.add_argument("vmname").help("VM name");
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+    
+    auto vmname = program.get<std::string>("vmname");
+    if (!is_running(vmname)) {
+        std::cerr << vmname << " is not running" << std::endl;
+        return 1;
+    }
+
+    with_qga(vmname, [](int fd) {
+        const char* cmd = "{\"execute\":\"guest-shutdown\", \"arguments\":{\"mode\":\"reboot\"}}\r\n";
+        write(fd, cmd, strlen(cmd));
+    }, [&vmname]() {
+        throw std::runtime_error("Guest agent is not running on " + vmname + ".");
+    });
+
+    if (program.get<bool>("--console")) {
+        return console(vmname.c_str());
+    }
+
+    return 0;
+}
+
+static int ping(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("vmname").help("VM name");
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+    
+    auto vmname = program.get<std::string>("vmname");
+    if (!is_running(vmname)) {
+        std::cerr << vmname << " is not running" << std::endl;
+        return 1;
+    }
+
+    with_qga(vmname, [](int fd) {
+        const char* cmd = "{\"execute\":\"guest-ping\"}\r\n";
+        write(fd, cmd, strlen(cmd));
+        auto tree = read_json_object(fd);
+        if (!tree) std::runtime_error("Invalid response from VM");
+        std::cout << "OK" << std::endl;
+
+    }, [&vmname]() {
+        throw std::runtime_error("Guest agent is not running on " + vmname + ".");
+    });
+    return 0;
 }
 
 int autostart(const std::vector<std::string>& args)
@@ -851,6 +939,8 @@ static const std::map<std::string,std::pair<int (*)(const std::vector<std::strin
   {"start", {start, "Start VM"}},
   {"stop", {stop, "Stop VM"}},
   {"restart", {restart, "Restart VM"}},
+  {"reboot", {reboot, "Reboot VM's operating system"}},
+  {"ping", {ping, "Ping VM's guest agent"}},
   {"status", {status, "Show VM status using 'systemctl status'"}},
   {"journal", {journal, "Show VM journal using 'journalctl'"}},
   {"autostart", {autostart, "Enable/Disable autostart"}},
@@ -899,4 +989,3 @@ static int _main(int argc, char* argv[])
 #ifdef __MAIN_MODULE__
 int main(int argc, char* argv[]) { return _main(argc, argv); }
 #endif
-
