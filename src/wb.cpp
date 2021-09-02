@@ -50,6 +50,11 @@ static bool is_running(const std::string& vmname)
     return running;
 }
 
+static int write(int fd, const std::string& str)
+{
+    return ::write(fd, str.c_str(), str.length());
+}
+
 static void with_qmp_session(const std::string& name, std::function<void(int)> func, std::function<void(void)> noavail = [](){})
 {
     auto socket_path = run_root / name / "qmp.sock";
@@ -60,8 +65,7 @@ static void with_qmp_session(const std::string& name, std::function<void(int)> f
     //else
     with_socket(socket_path, [&func](int fd) {
         read_json_object(fd); // skip {"QMP":{}}
-        static const char* qmp_capabilities_cmd = "{\"execute\":\"qmp_capabilities\"}\r\n";
-        if (write(fd, qmp_capabilities_cmd, strlen(qmp_capabilities_cmd)) < 0) {
+        if (write(fd, "{\"execute\":\"qmp_capabilities\"}\r\n") < 0) {
             throw std::runtime_error("qmp write(qmp_capabilities_cmd) failed");
         }
         if (!read_json_object(fd)) {
@@ -84,15 +88,15 @@ static void with_qga(const std::string& name, std::function<void(int)> func, std
     });
 }
 
-static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
+static std::map<std::string,std::tuple<bool,std::optional<uint16_t>/*cpu*/,std::optional<uint32_t>/*memory*/,std::optional<std::string>/*ip_address*/>> list()
 {
-    std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> vms;
+    std::map<std::string,std::tuple<bool,std::optional<uint16_t>,std::optional<uint32_t>,std::optional<std::string>>> vms;
     if (std::filesystem::exists(vm_root) && std::filesystem::is_directory(vm_root)) {
         for (const auto& d : std::filesystem::directory_iterator(vm_root)) {
             if (!d.is_directory()) continue;
             auto name = d.path().filename().string();
             if (name[0] != '@') {
-                vms[name] = {false,std::nullopt};
+                vms[name] = {false,std::nullopt,std::nullopt,std::nullopt};
             }
         }
     }
@@ -102,11 +106,12 @@ static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
             auto name = run_dir.filename().string();
             if (!is_running(name)) continue;
             //else
+            std::optional<uint16_t> cpu = std::nullopt;
             std::optional<uint32_t> memory = std::nullopt;
+            std::optional<std::string> ip_address = std::nullopt;
             try {
                 with_qmp_session(name, [&memory](int fd) {
-                    const char* query = "{\"execute\":\"query-memory-size-summary\"}\r\n";
-                    write(fd, query, strlen(query));
+                    write(fd, "{\"execute\":\"query-memory-size-summary\"}\r\n");
                     auto memory_size_summary = read_json_object(fd);
                     memory = with_object_property<uint32_t>(memory_size_summary.get(), "return", [](const yajl_val val) {
                         return with_object_property<uint32_t>(val, "base-memory", [](const yajl_val val) {
@@ -122,16 +127,61 @@ static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
             }
             // query qga
             try {
-                with_qga(name, [](int fd) {
-                    const char* query = "{\"execute\":\"guest-get-osinfo\"}\r\n";
-                    write(fd, query, strlen(query));
+                with_qga(name, [&cpu,&ip_address](int fd) {
+                    write(fd, "{\"execute\":\"guest-get-osinfo\"}\r\n");
                     auto os_info = read_json_object(fd);
                     auto kernel_ver = with_object_property<std::string>(os_info.get(), "return", [](const yajl_val val) {
                         return with_object_property<std::string>(val, "kernel-release", [](const yajl_val val) {
                             return YAJL_IS_STRING(val)? std::make_optional(val->u.string) : std::nullopt;
                         });
                     });
-                    //std::cout << kernel_ver.value() << std::endl;
+                    write(fd, "{\"execute\":\"guest-get-vcpus\"}\r\n");
+                    auto vcpus = read_json_object(fd);
+                    cpu = with_object_property<uint16_t>(vcpus.get(), "return", [](const yajl_val val) -> std::optional<uint16_t> {
+                        if (!YAJL_IS_ARRAY(val)) return std::nullopt;
+                        uint16_t cnt = 0;
+                        for (int i = 0; i < val->u.array.len; i++) {
+                            auto item = val->u.array.values[i];
+                            auto online = with_object_property<bool>(item, "online", [](const yajl_val val) -> std::optional<bool> {
+                                return YAJL_IS_TRUE(val) ? true : false;
+                            });
+                            if (online.value_or(false)) cnt++;
+                        }
+                        return cnt;
+                    });
+                    // {"return": [{"online": true, "can-offline": true, "logical-id": 1}, {"online": true, "can-offline": false, "logical-id": 0}]}
+                    write(fd, "{\"execute\":\"guest-network-get-interfaces\"}\r\n");
+                    auto network_interfaces = read_json_object(fd);
+                    // {"return": [{"name": "lo", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "127.0.0.1", "prefix": 8}, {"ip-address-type": "ipv6", "ip-address": "::1", "prefix": 128}], "statistics": {"tx-packets": 40, "tx-errs": 0, "rx-bytes": }
+                    //{"name": "eth0", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "192.168.62.81", "prefix": 24}, {"ip-address-type": "ipv6", "ip-address": "2409:11:8720:2100:216:3eff:fe00:ccbe", "prefix": 64}, {"ip-address-type": "ipv6", "ip-address": "fe80::216:3eff:fe00:ccbe", "prefix": 64}]
+                    ip_address = with_object_property<std::string>(network_interfaces.get(), "return", [](const yajl_val val) -> std::optional<std::string> {
+                        if (!YAJL_IS_ARRAY(val)) return std::nullopt;
+                        for (int i = 0; i < val->u.array.len; i++) {
+                            auto item = val->u.array.values[i];
+                            if (!YAJL_IS_OBJECT(item)) continue;
+                            auto ifname = with_object_property<std::string>(item, "name", [](const yajl_val val) { 
+                                return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt; 
+                            });
+                            if (!ifname.has_value() || ifname == "lo") continue;
+                            auto ip_address = with_object_property<std::string>(item, "ip-addresses", [](const yajl_val val) -> std::optional<std::string> {
+                                if (!YAJL_IS_ARRAY(val)) return std::nullopt;
+                                for (int i = 0; i < val->u.array.len; i++) {
+                                    auto item = val->u.array.values[i];
+                                    auto ip_address_type = with_object_property<std::string>(item, "ip-address-type", [](const yajl_val val) {
+                                        return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt;
+                                    });
+                                    if (ip_address_type != "ipv4") continue;
+                                    auto ip_address = with_object_property<std::string>(item, "ip-address", [](const yajl_val val) {
+                                        return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt;
+                                    });
+                                    return ip_address;
+                                }
+                                return std::nullopt;
+                            });
+                            if (ip_address.has_value()) return ip_address;
+                        }
+                        return std::nullopt;
+                    });
                 }, []() {
                     // do nothing when QGA socket is not available
                 });
@@ -139,7 +189,7 @@ static std::map<std::string,std::tuple<bool,std::optional<uint32_t>>> list()
             catch (const std::runtime_error& ex) {
                 std::cerr << ex.what() << std::endl;
             }
-            vms[name] = {true, memory};
+            vms[name] = {true, cpu, memory, ip_address};
         }
     }
     // TODO: use yajl to get details via qmp https://lloyd.github.io/yajl/
@@ -161,12 +211,16 @@ static int list(const std::vector<std::string>& args)
     scols_table_new_column(table.get(), "NAME", 0.1, 0);
     scols_table_new_column(table.get(), "RUNNING", 0.1, SCOLS_FL_RIGHT);
     scols_table_new_column(table.get(), "AUTOSTART", 0.1, SCOLS_FL_RIGHT);
+    scols_table_new_column(table.get(), "CPU", 0.1, SCOLS_FL_RIGHT);
     scols_table_new_column(table.get(), "MEMORY", 0.1, SCOLS_FL_RIGHT);
+    scols_table_new_column(table.get(), "IP ADDRESS", 0.1, SCOLS_FL_RIGHT);
     auto sep = scols_table_new_line(table.get(), NULL);
     scols_line_set_data(sep, 0, "--------");
     scols_line_set_data(sep, 1, "-------");
     scols_line_set_data(sep, 2, "---------");
-    scols_line_set_data(sep, 3, "-------");
+    scols_line_set_data(sep, 3, "---");
+    scols_line_set_data(sep, 4, "-------");
+    scols_line_set_data(sep, 5, "---------------");
 
     for (const auto& i:vms) {
         auto line = scols_table_new_line(table.get(), NULL);
@@ -174,8 +228,12 @@ static int list(const std::vector<std::string>& args)
         scols_line_set_data(line, 0, i.first.c_str());
         scols_line_set_data(line, 1, std::get<0>(i.second)? "*" : "");
         scols_line_set_data(line, 2, is_autostart(i.first)? "yes":"no");
-        auto memory = std::get<1>(i.second);
-        scols_line_set_data(line, 3, memory.has_value()? std::to_string(memory.value()).c_str() : "-");
+        const auto& cpu = std::get<1>(i.second);
+        scols_line_set_data(line, 3, cpu.has_value()? std::to_string(cpu.value()).c_str() : "-");
+        const auto& memory = std::get<2>(i.second);
+        scols_line_set_data(line, 4, memory.has_value()? std::to_string(memory.value()).c_str() : "-");
+        const auto& ip_address = std::get<3>(i.second);
+        scols_line_set_data(line, 5, ip_address.value_or("-").c_str());
     }
     scols_print_table(table.get());
 
@@ -283,8 +341,7 @@ static int restart(const std::vector<std::string>& args)
 
     if (program.get<bool>("--force")) {
         with_qmp_session(vmname, [](int fd) {
-            const char* cmd = "{ \"execute\": \"system_reset\"}\r\n";
-            write(fd, cmd, strlen(cmd));
+            write(fd, "{ \"execute\": \"system_reset\"}\r\n");
             read_json_object(fd);
         }, [&vmname]() {
             throw std::runtime_error("QMP interface is not available for " + vmname);
@@ -322,8 +379,7 @@ static int reboot(const std::vector<std::string>& args)
     }
 
     with_qga(vmname, [](int fd) {
-        const char* cmd = "{\"execute\":\"guest-shutdown\", \"arguments\":{\"mode\":\"reboot\"}}\r\n";
-        write(fd, cmd, strlen(cmd));
+        write(fd, "{\"execute\":\"guest-shutdown\", \"arguments\":{\"mode\":\"reboot\"}}\r\n");
     }, [&vmname]() {
         throw std::runtime_error("Guest agent is not running on " + vmname + ".");
     });
@@ -356,8 +412,7 @@ static int ping(const std::vector<std::string>& args)
     }
 
     with_qga(vmname, [](int fd) {
-        const char* cmd = "{\"execute\":\"guest-ping\"}\r\n";
-        write(fd, cmd, strlen(cmd));
+        write(fd, "{\"execute\":\"guest-ping\"}\r\n");
         auto tree = read_json_object(fd);
         if (!tree) std::runtime_error("Invalid response from VM");
         std::cout << "OK" << std::endl;
