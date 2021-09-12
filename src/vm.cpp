@@ -14,7 +14,6 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <pty.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/signalfd.h>
@@ -306,19 +305,7 @@ std::string get_or_generate_uuid(const std::string& vmname)
     return uuid_str;
 }
 
-void with_finally_clause(std::function<void(void)> func,std::function<void(void)> finally)
-{
-    try {
-        func();
-    }
-    catch (...) {
-        finally();
-        throw;
-    }
-    finally();
-}
-
-void with_vm_lock(const std::string& vmname, std::function<void(void)> func)
+template <typename T> T with_vm_lock(const std::string& vmname, std::function<T(void)> func)
 {
     auto run_dir = run_root / vmname;
     std::filesystem::create_directories(run_dir);
@@ -329,8 +316,8 @@ void with_vm_lock(const std::string& vmname, std::function<void(void)> func)
         if (errno == EWOULDBLOCK) throw std::runtime_error(vmname + " is already running");
         else throw std::runtime_error(std::string("flock(") + run_dir.string() + ") failed");
     }
-    with_finally_clause([&func]() {
-        func();
+    return with_finally_clause<T>([&func]() {
+        return func();
     }, [run_dir_fd]() {
         flock(run_dir_fd, LOCK_UN);
         close(run_dir_fd);
@@ -439,10 +426,33 @@ int vm(const std::string& name)
         nics.push_back({default_bridge? std::optional(default_bridge) : std::nullopt, std::nullopt});
     }
 
+    // load USB config
+    std::vector<std::pair<int/*bus*/,int/*addr*/>> usbdevs;
+    for (int i = 0; i < 10; i++) {
+        char buf[16];
+        sprintf(buf, "usb%d", i);
+        if (iniparser_find_entry(ini.get(), buf) == 0) continue;
+        //else
+        sprintf(buf, "usb%d:bus", i);
+        auto bus = iniparser_getint(ini.get(), buf, -1);
+        if (!bus < 0) {
+            std::cerr << "Bus # is not specified for USB " << i << ". USB device ignored." << std::endl;
+            continue;
+        }
+        //else
+        sprintf(buf, "usb%d:addr", i);
+        auto addr = iniparser_getint(ini.get(), buf, -1);
+        if (!addr < 0) {
+            std::cerr << "Addr # is not specified for USB " << i << ". USB device ignored." << std::endl;
+            continue;
+        }
+        usbdevs.push_back({bus, addr});
+    }
+
     // load display setting
     auto display = iniparser_getstring(ini.get(), ":display", iniparser_getstring(default_ini.get(), ":display", NULL)); /*sdl,curses,none,gtk,vnc,egl-headless,spice-app*/
-    auto vnc = iniparser_getstring(ini.get(), ":vnc", iniparser_getstring(default_ini.get(), ":vnc", NULL)); // VNC options passed to QEMU
-    if (vnc && !display) display = "vnc";  // choose VNC display automatically when vnc option is specified
+    //auto vnc = iniparser_getstring(ini.get(), ":vnc", iniparser_getstring(default_ini.get(), ":vnc", NULL)); // VNC options passed to QEMU
+    //if (vnc && !display) display = "vnc";  // choose VNC display automatically when vnc option is specified
 
     // rng
     bool hwrng = iniparser_getboolean(ini.get(), ":hwrng", iniparser_getboolean(default_ini.get(), ":hwrng", 0));
@@ -451,8 +461,8 @@ int vm(const std::string& name)
     auto rtc = iniparser_getstring(ini.get(), ":rtc", iniparser_getstring(default_ini.get(), ":rtc", NULL));
 
     // virtiofsd setting
-    auto virtiofsd_cache = iniparser_getstring(ini.get(), "virtiofsd:cache", iniparser_getstring(default_ini.get(), "virtiofsd:cache", "none"));
-    auto virtiofsd_modcaps = iniparser_getstring(ini.get(), "virtiofsd:modcaps", iniparser_getstring(default_ini.get(), "virtiofsd:modcaps", "+sys_admin"));
+    auto virtiofsd_cache = iniparser_getstring(ini.get(), "virtiofsd:cache", iniparser_getstring(default_ini.get(), "virtiofsd:cache", "auto"));
+    auto virtiofsd_modcaps = iniparser_getstring(ini.get(), "virtiofsd:modcaps", iniparser_getstring(default_ini.get(), "virtiofsd:modcaps", "+sys_admin:+sys_resource:+fowner:+setfcap"));
 
     std::filesystem::create_directories(fs_dir);
 
@@ -465,7 +475,8 @@ int vm(const std::string& name)
 
     std::vector<std::string> virtiofsd_cmdline = {
         "/usr/libexec/virtiofsd","-f","-o","cache=" + std::string(virtiofsd_cache) + ",log_level=" + std::string(debug? "debug" : "warn") 
-            + ",xattr,modcaps=" + std::string(virtiofsd_modcaps) + ",allow_root,allow_direct_io,posix_lock,flock",
+//            + ",posix_acl,xattrmap=:ok:all:::"
+            + ",xattr,modcaps=" + std::string(virtiofsd_modcaps) + ",allow_direct_io,posix_lock,flock",
         /*"--syslog",*/
         "-o", std::string("source=") + fs_dir.string(),
         std::string("--socket-path=") + virtiofs_sock.string()
@@ -505,7 +516,7 @@ int vm(const std::string& name)
     bool has_system_image = std::filesystem::exists(system_image);
     bool has_data_image = std::filesystem::exists(data_image);
 
-    std::vector<std::filesystem::path> kernel_candidates = {fs_dir / "boot" / "kernel", fs_dir / "boot" / "vmlinuz"};
+    std::vector<std::filesystem::path> kernel_candidates = {fs_dir / "boot" / "kernel", fs_dir / "boot" / "vmlinuz", fs_dir / "vmlinuz", "/boot/kernel"};
     auto kernel = std::find_if(kernel_candidates.begin(), kernel_candidates.end(), [](const auto& path) {return std::filesystem::exists(path);});
 
     auto boot_from_cdrom = std::filesystem::exists(cdrom); // TODO: check if media is loaded for real drive
@@ -574,12 +585,19 @@ int vm(const std::string& name)
         nic_idx++;
     }
 
+    qemu_cmdline.push_back("-usb");
+    for (const auto& usbdev:usbdevs) {
+        auto bus = usbdev.first;
+        auto addr = usbdev.second;
+        qemu_cmdline.push_back("-device");
+        qemu_cmdline.push_back("usb-host,hostbus=" + std::to_string(bus) + ",hostaddr=" + std::to_string(addr));
+    }
+
     if (display) {
         qemu_cmdline.push_back("-vga");
         qemu_cmdline.push_back("virtio");
         qemu_cmdline.push_back("-display");
         qemu_cmdline.push_back(display);
-        qemu_cmdline.push_back("-usb");
         qemu_cmdline.push_back("-device");
         qemu_cmdline.push_back("usb-tablet");
         qemu_cmdline.push_back("-device");
@@ -587,12 +605,15 @@ int vm(const std::string& name)
     } else {
         qemu_cmdline.push_back("-nographic");
     }
+
+    /*
     if (vnc) {
         qemu_cmdline.push_back("-vnc");
         qemu_cmdline.push_back(vnc);
     }
+    */
 
-    with_vm_lock(name, [&]() {
+    return with_vm_lock<int>(name, [&]() -> int {
         if (boot_image.has_value() && !std::filesystem::exists(boot_image.value())) {
             std::cout << "Boot image file does not exist.  Creating..." << std::endl;
             create_bootimage(boot_image.value(), name);
@@ -609,7 +630,7 @@ int vm(const std::string& name)
             qga_client_fd = -1/*ongoing client of qga_sock*/; // TODO: implement
         std::string qga_bridge_buf;
 
-        with_finally_clause([&]() {
+        return with_finally_clause<int>([&]() -> int {
             virtiofsd_pid = fork([&virtiofsd_cmdline]() {
                 sigset_t mask;
                 sigemptyset (&mask);
@@ -747,8 +768,8 @@ int vm(const std::string& name)
                     send_qmp_command(qmp_sock, "{ \"execute\": \"system_powerdown\"}");
                     qemu_last_shutdown_signaled_time = now;
                 }
-                
             }
+            return 0;
         }, [&]()/*finally*/ {
             for (int fd:{sigfd, qga_client_fd, qga_server_fd, qga_bridge_fd})
                 if (fd >= 0) close(fd);
@@ -766,30 +787,6 @@ int vm(const std::string& name)
             wait(NULL);
         });
     });
-
-    return 0;
-}
-
-std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<std::pair<unsigned short,unsigned short>>& winsiz = std::nullopt)
-{
-    int fd;
-    struct winsize win = { (unsigned short)25, (unsigned short)80, 0, 0 };
-    if (winsiz.has_value()) {
-        win.ws_col = winsiz.value().first;
-        win.ws_row = winsiz.value().second;
-    }
-    auto pid = forkpty(&fd, NULL, NULL, &win);
-    if (pid < 0) throw std::runtime_error("forkpty() failed");
-    if (pid > 0) return {pid, fd};
-
-    //else(child process)
-    try {
-        func();
-    }
-    catch (...) {
-        // jumping across scope border in forked process may not be a good idea.
-    }
-    _exit(-1);
 }
 
 int vm_nspawn(const std::string& name)
@@ -800,6 +797,7 @@ int vm_nspawn(const std::string& name)
     auto ini_path = vm_dir / "vm.ini";
     auto ini = std::shared_ptr<dictionary>(std::filesystem::exists(ini_path)? iniparser_load(ini_path.c_str()) : dictionary_new(0), iniparser_freedict);
     auto bridge = iniparser_getstring(ini.get(), "net0:bridge", default_bridge);
+    auto bind = iniparser_getstring(ini.get(), ":nspawn-bind", NULL);
 
     struct utsname u_name;
     if (uname(&u_name) < 0) throw std::runtime_error("uname() failed");
@@ -809,6 +807,9 @@ int vm_nspawn(const std::string& name)
             "--capability=CAP_SYS_MODULE", std::string("--bind-ro=/lib/modules/") + u_name.release, "--bind-ro=/sys/module/"};
     if (bridge) {
         nspawn_cmdline.push_back(std::string("--network-bridge=") + bridge);
+    }
+    if (bind) {
+        nspawn_cmdline.push_back(std::string("--bind=") + bind);
     }
 
     auto serial_sock = run_dir / "serial.sock";
@@ -830,7 +831,7 @@ int vm_nspawn(const std::string& name)
         for (auto i:nspawn_cmdline) { std::cout << i << ' '; }
         std::cout << std::endl;
     }
-    with_vm_lock(name, [&]() {
+    return with_vm_lock<int>(name, [&]() -> int {
         int sigfd = -1;
         pid_t nspawn_pid = 0;
         int nspawn_fd = -1;
@@ -839,7 +840,7 @@ int vm_nspawn(const std::string& name)
 
         time_t nspawn_first_shutdown_signaled_time = -1L, nspawn_last_shutdown_signaled_time = -1L;
 
-        with_finally_clause([&](){
+        return with_finally_clause<int>([&]() -> int {
             auto pid_and_fd = forkpty([&nspawn_cmdline]() {
                 setenv("TERM", "xterm-256color", 1);
                 exec(nspawn_cmdline);
@@ -934,6 +935,7 @@ int vm_nspawn(const std::string& name)
                     nspawn_last_shutdown_signaled_time = now;
                 }
             }
+            return 0;
         }, [&]()/*finally*/ {
             for (int fd:{sigfd, nspawn_fd, serial_server_fd, serial_client_fd})
                 if (fd >= 0) close(fd);
@@ -942,8 +944,6 @@ int vm_nspawn(const std::string& name)
             wait(NULL);
         });
     });
-
-    return 0;
 }
 
 void usage(const std::string& progname)

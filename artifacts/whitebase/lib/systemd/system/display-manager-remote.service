@@ -1,0 +1,11 @@
+[Unit]
+Description=Weston RDP
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/start-display-manager rdp
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

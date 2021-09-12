@@ -1,5 +1,8 @@
+
 #include <pty.h>
 #include <glob.h>
+#include <unistd.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/mount.h>
@@ -13,80 +16,8 @@
 
 #include <argparse/argparse.hpp>
 
-#include "sdlplusplus.h"
-#include "wbc.h"
-#include "installer.h"
-#include "messagebox.h"
-#include "terminal.h"
 #include "disk.h"
 #include "messages.h"
-
-void Installer::load_options()
-{
-    auto disks = get_unused_disks();
-
-    auto font = uicontext.registry.fonts({uicontext.FONT_PROPOTIONAL, 32});
-    auto icon = uicontext.registry.surfaces("icon_storage.png");
-    int y = 0;
-    for (const auto& disk : disks) {
-        auto const& [texture,__,h] = create_texture_from_surface(uicontext, [this,font,&icon,&disk]() {
-            auto label_surface = make_shared(TTF_RenderUTF8_Blended(font, disk.model? disk.model.value().c_str() : (std::string("/dev/") + disk.name).c_str(), {0,0,0,255}));
-            std::string capacity_str;
-            if (disk.size > 1000L * 1000 * 1000 * 1000/*TB*/) {
-                char buf[32];
-                sprintf(buf, "%.1fTB", (double)disk.size / 1000 / 1000 / 1000 / 1000);
-                capacity_str = buf;
-            } else /*GB*/ {
-                char buf[32];
-                sprintf(buf, "%.1fGB", (double)disk.size / 1000 / 1000 / 1000);
-                capacity_str = buf;
-            }
-            auto capacity_surface = make_shared(TTF_RenderUTF8_Blended(font, capacity_str.c_str(), {0,0,0,255}));
-
-            return with_transparent_surface(width, std::max(label_surface->h, capacity_surface->h), [this,&icon,&label_surface, &capacity_surface](auto surface) {
-                SDL_Rect rect { 0, (surface->h - icon->h) / 2, icon->w, icon->h };
-                SDL_BlitSurface(icon, NULL, surface, &rect);
-
-                rect.x += icon->w;
-                rect.y = 0;
-                rect.w = label_surface->w;
-                rect.h = label_surface->h;
-                if (rect.x + rect.w > surface->w - capacity_surface->w - 20) {
-                    rect.w = surface->w - capacity_surface->w - rect.x - 20;
-                }
-                
-                SDL_BlitScaled(label_surface.get(), NULL, surface, &rect);
-                rect.x = width - capacity_surface->w;
-                rect.w = capacity_surface->w;
-                rect.h = capacity_surface->h;
-                SDL_BlitSurface(capacity_surface.get(), NULL, surface, &rect);
-            });
-        });
-        (void)__;
-        options.push_back({disk.name, disk.size, disk.log_sec.value(), texture, y, h, disk.model? disk.model.value() : ""});
-        y += h;
-    }
-}
-
-void Installer::on_select()
-{
-    load_options();
-}
-
-void Installer::on_deselect()
-{
-    options.clear();
-}
-
-void Installer::draw(SDL_Renderer* renderer/*=NULL*/)
-{
-    if (!renderer) renderer = uicontext;
-    for (auto const&[name, size, log_sec, texture, y, h, details] : options) {
-        (void)size;(void)log_sec;
-        SDL_Rect rect { uicontext.mainmenu_width, uicontext.header_height + y, width, h };
-        SDL_RenderCopy(renderer, texture.get(), NULL, &rect);
-    }
-}
 
 static void exec_command(const std::string& cmd, const std::vector<std::string>& args)
 {
@@ -335,7 +266,7 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         if (secondary_partition) {
             auto boot_partition_uuid = get_partition_uuid(boot_partition);
             if (boot_partition_uuid) {
-                auto label = std::string("wbdata-") + boot_partition_uuid.value();
+                auto label = std::string("data-") + boot_partition_uuid.value();
                 auto partition_name = secondary_partition.value();
                 std::cout << MSG("Formatting partition for data area with BTRFS...");
                 std::flush(std::cout);
@@ -349,133 +280,6 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         }
     }
 
-}
-
-static bool do_install(UIContext& uicontext, const std::filesystem::path& disk, uint64_t size, uint16_t log_sec)
-{
-    const int rows = 24, cols = 60;
-
-    int fd;
-    struct winsize win = { (unsigned short)rows, (unsigned short)cols, 0, 0 };
-    auto pid = forkpty(&fd, NULL, NULL, &win);
-    if (pid < 0) throw std::runtime_error("forkpty failed");
-    //else
-    if (!pid) {
-        signal(SIGTERM, SIG_DFL);
-        signal(SIGINT, SIG_DFL);
-        int fdlimit = (int)sysconf(_SC_OPEN_MAX);
-        for (int i = STDERR_FILENO + 1; i < fdlimit; i++) close(i);
-        setenv("TERM", "xterm-256color", 1);
-        std::cout << "Walbrixを " << disk.string() << " へインストールします" << std::endl;
-        try {
-            do_install(disk, size, log_sec);
-            std::cout << "インストール完了" << std::endl;
-        }
-        catch (const std::runtime_error& e) {
-            std::cerr << "エラー:" << e.what() << std::endl;
-            std::cout << "Enterキーを押してください: ";
-            getchar();
-            _Exit(-1);
-        }
-        _Exit(0);//success
-    }
-    //else 
-
-    struct AutoClose {
-        int fd;
-        AutoClose(int _fd) : fd(_fd) {;}
-        ~AutoClose() { close(fd); }
-    } autoclose_fd(fd);
-
-    auto font = uicontext.registry.fonts({uicontext.FONT_FIXED, 24});
-    Terminal terminal(fd, rows, cols, font);
-    SDL_Rect terminal_rect = { 
-        uicontext.mainmenu_width, uicontext.header_height, 
-        uicontext.width - uicontext.mainmenu_width, uicontext.height - uicontext.header_height - uicontext.footer_height
-    };
-
-    RenderFunc rf(uicontext, [&terminal,&terminal_rect](auto renderer, bool) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &terminal_rect);
-        terminal.render(renderer, terminal_rect);
-        return true;
-    });
-
-    int status;
-    while (pid != waitpid(pid, &status, WNOHANG)) {
-        uicontext.render();
-
-        process_event([&terminal](auto ev) { terminal.processEvent(ev); return true; } );
-        if (!terminal.processInput()) break; // EOF detected
-
-        SDL_RenderPresent(uicontext);
-    }
-    terminal.processInput(); // to consume last output from subprocess
-
-    if (status == 0) {
-        messagebox_ok(uicontext, "インストールが完了しました。システムを再起動します。");
-    } else {
-        messagebox_ok(uicontext, "インストールが中断されました", true);
-    }
-
-    return (status == 0);
-}
-
-bool Installer::on_enter()
-{
-    options.clear();
-    load_options();
-    if (options.size() < 1) return true;
-
-    int selected = 0;
-
-    auto cursor = create_texture_from_surface(uicontext, 1, 1, [](auto surface) { 
-        SDL_FillRect(surface, NULL, SDL_MapRGB(surface->format, 0x07, 0x8e, 0xb7));
-    });
-
-    {
-        RenderFunc rf(uicontext, [this,&cursor,&selected](auto renderer, bool focus) {
-            auto const& [name, size, log_sec, texture, y, h, details] = options[selected];
-            (void)name;(void)size;(void)log_sec;(void)texture;(void)details;
-            SDL_Rect rect { uicontext.mainmenu_width, uicontext.header_height + y, width, h};
-            Uint8 alpha = focus? (std::abs(std::sin((SDL_GetTicks() % 4000 * pi * 2 / 4000))) * 127 + 128) : 255;
-            SDL_SetTextureAlphaMod(cursor.get(), alpha);
-            SDL_RenderCopy(renderer, cursor.get(), NULL, &rect);
-            draw(renderer);
-            return true;
-        });
-
-        while (true) {
-            while (process_event([this,&selected](auto ev) {
-                if (ev.type != SDL_KEYDOWN) return true;
-                //else
-                if (ev.key.keysym.sym == SDLK_UP && selected > 0) {
-                    selected--;
-                } else if (ev.key.keysym.sym == SDLK_DOWN && selected < options.size() - 1) {
-                    selected++;
-                } else if (ev.key.keysym.sym == SDLK_RETURN || ev.key.keysym.sym == SDLK_KP_ENTER) {
-                    return false;
-                } else if (ev.key.keysym.sym == SDLK_ESCAPE) {
-                    selected = -1;
-                    return false;
-                }        
-                return true;
-            })) {
-                uicontext.render();
-                SDL_RenderPresent(uicontext);
-            }
-            if (selected < 0 || (selected >= 0 && messagebox_okcancel(uicontext, "インストールします", false, true))) break;
-        }
-    }
-
-    if (selected < 0) return true;
-    //else
-    auto const& [name, size, log_sec, texture, y, h, details] = options[selected];
-    (void)texture,(void)y,(void)h,(void)details;
-    auto const& disk = std::filesystem::path("/dev/") / name;
-    if (do_install(uicontext, disk, size, log_sec)) throw PerformReboot(true);
-    //else
-    return true;
 }
 
 int install_cmdline(const std::vector<std::string>& args)
@@ -521,3 +325,4 @@ static int _main(int,char*[])
 #ifdef __MAIN_MODULE__
 int main(int argc, char* argv[]) { return _main(argc, argv); }
 #endif
+

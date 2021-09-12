@@ -1,0 +1,4 @@
+#!/.stubroot/bin/busybox sh
+mkdir -p /.stubroot/.real_root
+/.stubroot/bin/busybox mount --bind / /.stubroot/.real_root
+exec chroot /.stubroot /init

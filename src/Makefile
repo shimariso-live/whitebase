@@ -3,37 +3,28 @@ OBJS=$(subst .cpp,.o,$(call rwildcard,,*.cpp)) $(subst .c,.o,$(call rwildcard,,*
 BINS=$(subst .cpp,.bin,$(call rwildcard,,*.cpp))
 HEADERS=$(call rwildcard,,*.h)
 
-CXXFLAGS ?= -std=c++2a
-LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lxenlight -lxlutil -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm
+CXXFLAGS ?= -std=c++2a $(shell pkg-config gtkmm-4.0 --cflags)
+LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lyajl -lvterm -lwayland-client -lsmartcols -luuid $(shell pkg-config gtkmm-4.0 --libs)
 
-all: wb walbrixd wg-walbrix messages.mo textui xendomain vm
+all: wb wg-walbrix messages.mo vm
 
 libproj.a: $(OBJS)
 	ar r $@ $(OBJS)
 
 %.bin: %.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $< -L . -lproj $(LIBS)
+	g++ $(CXXFLAGS) -g -o $@ -D__MAIN_MODULE__ $< -L . -lproj $(LIBS)
 
 %.o: %.cpp $(HEADERS)
-	g++ $(CXXFLAGS) -c $< -o $@
+	g++ $(CXXFLAGS) $(DEBUGFLAGS) -c $< -o $@
 
 %.o: %.c $(HEADERS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lSDL2 -lSDL2_image -lSDL2_ttf -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj
-
-walbrixd: walbrixd.cpp
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -liniparser4
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid $(shell pkg-config gtkmm-4.0 --libs)
 
 wg-walbrix: wg-walbrix.cpp
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto
-
-textui: textui.cpp termbox.o
-	g++ $(CXXFLAGS) -o $@ -lpam -lpam_misc -D__MAIN_MODULE__ $^
-
-xendomain: xendomain.cpp
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lxenlight -lxentoollog -lxenstore -liniparser4
 
 vm: vm.cpp common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil -lyajl
@@ -41,13 +32,13 @@ vm: vm.cpp common.o
 messages.mo: messages.po
 	msgfmt -o $@ $<
 
-install: wb walbrixd walbrixd.service walbrixd.conf wg-walbrix textui xendomain wg-walbrix.service wg-walbrix.conf messages.mo
-	cp -a wb walbrixd wg-walbrix textui xendomain vm /usr/sbin/
-	cp -a walbrixd.service wg-walbrix.service /lib/systemd/system/
-	cp -a walbrixd.conf wg-walbrix.conf /etc/dbus-1/system.d/
+install: wb wg-walbrix wg-walbrix.service wg-walbrix.conf messages.mo
+	cp -a wb wg-walbrix vm /usr/sbin/
+	#cp -a walbrixd.service wg-walbrix.service /lib/systemd/system/
+	#cp -a walbrixd.conf wg-walbrix.conf /etc/dbus-1/system.d/
 	mkdir -p /usr/share/wb/themes/default
 	cp -a default_theme/. /usr/share/wb/themes/default/
 	cp -a messages.mo /usr/share/locale/ja/LC_MESSAGES/
 
 clean:
-	rm -f $(BINS) $(OBJS) libproj.a wb walbrixd wg-walbrix xendomain vm
+	rm -f $(BINS) $(OBJS) libproj.a wb wg-walbrix vm

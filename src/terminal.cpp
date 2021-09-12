@@ -1,155 +1,74 @@
-#include <termios.h>
-#include <pty.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <sys/wait.h>
-#include <iostream>
-#include <vector>
-#include <functional>
-#include <thread>
-#include <cstring>
-#include <chrono>
 #include <unicode/unistr.h>
 #include <unicode/normlzr.h>
 
 #include "terminal.h"
 
-Terminal::Terminal(int _fd, int _rows, int _cols, TTF_Font* _font) : fd(_fd), matrix(_rows, _cols), font(_font), font_height(TTF_FontHeight(font))
-{
-    vterm = vterm_new(_rows,_cols);
-    vterm_set_utf8(vterm, 1);
-    vterm_output_set_callback(vterm, output_callback, (void*)&fd);
+Terminal::Terminal(int _font_size/* = 20*/) : font_size(_font_size), fd(-1), vterm(nullptr), screen(nullptr) {
+    set_draw_func([this](const Cairo::RefPtr<Cairo::Context>& cairo, int width, int height) {
+        if (!vterm || !matrix || !surface) return;
+        //std::cout << "draw" << std::endl;
+        Pango::FontDescription desc("monospace");
+        desc.set_absolute_size(font_size * PANGO_SCALE);
+        auto surface_cairo = Cairo::Context::create(surface);
+        auto get_color = [this](VTermScreenCell& cell) {
+            std::tuple<double,double,double> color = {0.5, 0.5, 0.5};
+            std::tuple<double,double,double> bgcolor = {0, 0, 0};
+            if (VTERM_COLOR_IS_INDEXED(&cell.fg)) {
+                vterm_screen_convert_color_to_rgb(screen, &cell.fg);
+            }
+            if (VTERM_COLOR_IS_RGB(&cell.fg)) {
+                color = {(double)cell.fg.rgb.red / 255, (double)cell.fg.rgb.green / 255, (double)cell.fg.rgb.blue / 255};
+            }
+            if (VTERM_COLOR_IS_INDEXED(&cell.bg)) {
+                vterm_screen_convert_color_to_rgb(screen, &cell.bg);
+            }
+            if (VTERM_COLOR_IS_RGB(&cell.bg)) {
+                bgcolor = {(double)cell.bg.rgb.red / 255, (double)cell.bg.rgb.green / 255, (double)cell.bg.rgb.blue / 255};
+            }
 
-    screen = vterm_obtain_screen(vterm);
-    vterm_screen_set_callbacks(screen, &screen_callbacks, this);
-    vterm_screen_reset(screen, 1);
+            if (cell.attrs.reverse) std::swap(color, bgcolor);
+            return std::make_pair(color, bgcolor);
+        };
 
-    matrix.fill(0);
-    TTF_SizeUTF8(font, "X", &font_width, NULL);
-    surface = SDL_CreateRGBSurfaceWithFormat(0, font_width * _cols, font_height * _rows, 32, SDL_PIXELFORMAT_RGBA32);
-    
-    SDL_CreateRGBSurface(0, font_width, font_height, 32, 0, 0, 0, 0);
-    //SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_BLEND);
-}
+        // clear destroyed background
+        for (int row = 0; row < matrix.get_rows(); row++) {
+            for (int col = 0; col < matrix.get_cols(); col++) {
+                if (!matrix(row, col)) continue;
+                VTermPos pos = { row, col };
+                VTermScreenCell cell;
+                vterm_screen_get_cell(screen, pos, &cell);
 
-Terminal::~Terminal()
-{
-    vterm_free(vterm);
-    invalidateTexture();
-    SDL_FreeSurface(surface);
-}
+                auto color = get_color(cell);
 
-void Terminal::invalidateTexture()
-{
-    if (texture) {
-        SDL_DestroyTexture(texture);
-        texture = NULL;
-    }
-}
-
-void Terminal::keyboard_unichar(char c, VTermModifier mod) 
-{
-    vterm_keyboard_unichar(vterm, c, mod);
-}
-
-void Terminal::keyboard_key(VTermKey key, VTermModifier mod)
-{
-    vterm_keyboard_key(vterm, key, mod);
-}
-
-void Terminal::input_write(const char* bytes, size_t len)
-{
-    vterm_input_write(vterm, bytes, len);
-}
-
-int Terminal::damage(int start_row, int start_col, int end_row, int end_col)
-{
-    invalidateTexture();
-    for (int row = start_row; row < end_row; row++) {
-        for (int col = start_col; col < end_col; col++) {
-            matrix(row, col) = 1;
+                surface_cairo->set_source_rgb(std::get<0>(color.second), std::get<1>(color.second), std::get<2>(color.second));
+                double x = col * font_size / 2.0, y = row * font_size;
+                surface_cairo->rectangle(x, y, font_size / 2.0, font_size);
+                surface_cairo->fill();
+            }
         }
-    }
-    return 0;
-}
 
-int Terminal::moverect(VTermRect dest, VTermRect src)
-{
-    return 0;
-}
+        // draw updated chars
+        for (int row = 0; row < matrix.get_rows(); row++) {
+            for (int col = 0; col < matrix.get_cols(); col++) {
+                if (!matrix(row, col)) continue;
 
-int Terminal::movecursor(VTermPos pos, VTermPos oldpos, int visible)
-{
-    cursor_pos = pos;
-    return 0;
-}
-
-int Terminal::settermprop(VTermProp prop, VTermValue *val)
-{
-    return 0;
-}
-
-int Terminal::bell()
-{
-    ringing = true;
-    return 0;
-}
-
-int Terminal::resize(int rows, int cols)
-{
-    return 0;
-}
-
-int Terminal::sb_pushline(int cols, const VTermScreenCell *cells)
-{
-    return 0;
-}
-
-int Terminal::sb_popline(int cols, VTermScreenCell *cells)
-{
-    return 0;
-}
-
-void Terminal::render(SDL_Renderer* renderer, const SDL_Rect& window_rect)
-{
-    if (!texture) {
-        for (int row = 0; row < matrix.getRows(); row++) {
-            for (int col = 0; col < matrix.getCols(); col++) {
-                if (matrix(row, col)) {
-                    VTermPos pos = { row, col };
-                    VTermScreenCell cell;
-                    vterm_screen_get_cell(screen, pos, &cell);
-                    if (cell.chars[0] == 0xffffffff) continue;
+                VTermPos pos = { row, col };
+                VTermScreenCell cell;
+                vterm_screen_get_cell(screen, pos, &cell);
+                if (cell.chars[0] != 0xffffffff/*2nd cell of wide char*/) {
                     icu::UnicodeString ustr;
                     for (int i = 0; cell.chars[i] != 0 && i < VTERM_MAX_CHARS_PER_CELL; i++) {
                         ustr.append((UChar32)cell.chars[i]);
                     }
-                    SDL_Color color = (SDL_Color){128,128,128};
-                    SDL_Color bgcolor = (SDL_Color){0,0,0};
-                    if (VTERM_COLOR_IS_INDEXED(&cell.fg)) {
-                        vterm_screen_convert_color_to_rgb(screen, &cell.fg);
-                    }
-                    if (VTERM_COLOR_IS_RGB(&cell.fg)) {
-                        color = (SDL_Color){cell.fg.rgb.red, cell.fg.rgb.green, cell.fg.rgb.blue};
-                    }
-                    if (VTERM_COLOR_IS_INDEXED(&cell.bg)) {
-                        vterm_screen_convert_color_to_rgb(screen, &cell.bg);
-                    }
-                    if (VTERM_COLOR_IS_RGB(&cell.bg)) {
-                        bgcolor = (SDL_Color){cell.bg.rgb.red, cell.bg.rgb.green, cell.bg.rgb.blue};
-                    }
-
-                    if (cell.attrs.reverse) std::swap(color, bgcolor);
                     
+                    /*
                     int style = TTF_STYLE_NORMAL;
                     if (cell.attrs.bold) style |= TTF_STYLE_BOLD;
                     if (cell.attrs.underline) style |= TTF_STYLE_UNDERLINE;
                     if (cell.attrs.italic) style |= TTF_STYLE_ITALIC;
                     if (cell.attrs.strike) style |= TTF_STYLE_STRIKETHROUGH;
-                    if (cell.attrs.blink) { /*TBD*/ }
-
-                    SDL_Rect rect = { col * font_width, row * font_height, font_width * cell.width, font_height };
-                    SDL_FillRect(surface, &rect, SDL_MapRGB(surface->format, bgcolor.r, bgcolor.g, bgcolor.b));
+                    if (cell.attrs.blink) {  } // TBD
+                    */
 
                     if (ustr.length() > 0) {
                         UErrorCode status = U_ZERO_ERROR;
@@ -162,333 +81,203 @@ void Terminal::render(SDL_Renderer* renderer, const SDL_Rect& window_rect)
                         } else {
                             ustr.toUTF8String(utf8);
                         }
-                        TTF_SetFontStyle(font, style);
-                        auto text_surface = TTF_RenderUTF8_Blended(font, utf8.c_str(), color);
-                        SDL_SetSurfaceBlendMode(text_surface, SDL_BLENDMODE_BLEND);
-                        SDL_BlitSurface(text_surface, NULL, surface, &rect);
-                        SDL_FreeSurface(text_surface);
+                        auto layout = create_pango_layout(utf8);
+                        layout->set_font_description(desc);
+                        auto color = get_color(cell);
+                        double x = col * font_size / 2.0, y = row * font_size;
+                        surface_cairo->move_to(x, y);
+                        surface_cairo->set_source_rgb(std::get<0>(color.first), std::get<1>(color.first), std::get<2>(color.first));
+                        layout->show_in_cairo_context(surface_cairo);
                     }
-                    matrix(row, col) = 0;
                 }
+
+                matrix(row, col) = 0;
             }
         }
-        texture = SDL_CreateTextureFromSurface(renderer, surface);
-        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
-    }
-    SDL_RenderCopy(renderer, texture, NULL, &window_rect);
-    // draw cursor
-    VTermScreenCell cell;
-    vterm_screen_get_cell(screen, cursor_pos, &cell);
 
-    SDL_Rect rect = { cursor_pos.col * font_width, cursor_pos.row * font_height, font_width, font_height };
-    // scale cursor
-    rect.x = window_rect.x + rect.x * window_rect.w / surface->w;
-    rect.y = window_rect.y + rect.y * window_rect.h / surface->h;
-    rect.w = rect.w * window_rect.w / surface->w;
-    rect.w *= cell.width;
-    rect.h = rect.h * window_rect.h / surface->h;
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 255,255,255,96 );
-    SDL_RenderFillRect(renderer, &rect);
-    SDL_SetRenderDrawColor(renderer, 255,255,255,255 );
-    SDL_RenderDrawRect(renderer, &rect);
 
-    if (ringing) {
-        SDL_SetRenderDrawColor(renderer, 255,255,255,192 );
-        SDL_RenderFillRect(renderer, &window_rect);
-        ringing = 0;
-    }
-}
-
-void Terminal::processEvent(const SDL_Event& ev)
-{
-    if (ev.type == SDL_TEXTINPUT) {
-        const Uint8 *state = SDL_GetKeyboardState(NULL);
-        int mod = VTERM_MOD_NONE;
-        if (state[SDL_SCANCODE_LCTRL] || state[SDL_SCANCODE_RCTRL]) mod |= VTERM_MOD_CTRL;
-        if (state[SDL_SCANCODE_LALT] || state[SDL_SCANCODE_RALT]) mod |= VTERM_MOD_ALT;
-        if (state[SDL_SCANCODE_LSHIFT] || state[SDL_SCANCODE_RSHIFT]) mod |= VTERM_MOD_SHIFT;
-        for (int i = 0; i < strlen(ev.text.text); i++) {
-            keyboard_unichar(ev.text.text[i], (VTermModifier)mod);
+        cairo_set_source_surface(cairo->cobj(), surface->cobj(), 0, 0);
+        cairo->paint();
+        // draw cursor
+        cairo->set_source_rgba(1, 1, 1, 0.5);
+        cairo->rectangle(cursor_pos.col * font_size / 2.0, cursor_pos.row * font_size, font_size / 2.0, font_size);
+        cairo->fill();
+        if (!has_focus() || ringing) {
+            cairo->set_source_rgba(1, 1, 1, 0.8);
+            cairo->rectangle(0, 0, width, height);
+            cairo->fill();
         }
-    } else if (ev.type == SDL_KEYDOWN) {
-        switch (ev.key.keysym.sym) {
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
-            keyboard_key(VTERM_KEY_ENTER, VTERM_MOD_NONE);
-            break;
-        case SDLK_BACKSPACE:
-            keyboard_key(VTERM_KEY_BACKSPACE, VTERM_MOD_NONE);
-            break;
-        case SDLK_ESCAPE:
-            keyboard_key(VTERM_KEY_ESCAPE, VTERM_MOD_NONE);
-            break;
-        case SDLK_TAB:
-            keyboard_key(VTERM_KEY_TAB, VTERM_MOD_NONE);
-            break;
-        case SDLK_UP:
-            keyboard_key(VTERM_KEY_UP, VTERM_MOD_NONE);
-            break;
-        case SDLK_DOWN:
-            keyboard_key(VTERM_KEY_DOWN, VTERM_MOD_NONE);
-            break;
-        case SDLK_LEFT:
-            keyboard_key(VTERM_KEY_LEFT, VTERM_MOD_NONE);
-            break;
-        case SDLK_RIGHT:
-            keyboard_key(VTERM_KEY_RIGHT, VTERM_MOD_NONE);
-            break;
-        case SDLK_PAGEUP:
-            keyboard_key(VTERM_KEY_PAGEUP, VTERM_MOD_NONE);
-            break;
-        case SDLK_PAGEDOWN:
-            keyboard_key(VTERM_KEY_PAGEDOWN, VTERM_MOD_NONE);
-            break;
-        case SDLK_HOME:
-            keyboard_key(VTERM_KEY_HOME, VTERM_MOD_NONE);
-            break;
-        case SDLK_END:
-            keyboard_key(VTERM_KEY_END, VTERM_MOD_NONE);
-            break;
-        default:
-            if (ev.key.keysym.mod & KMOD_CTRL && ev.key.keysym.sym < 127) {
-                //std::cout << ev.key.keysym.sym << std::endl;
-                keyboard_unichar(ev.key.keysym.sym, VTERM_MOD_CTRL);
-            }
-            break;
-        }
-    }
-}
-
-bool Terminal::processInput()
-{
-    fd_set readfds;
-    FD_ZERO(&readfds);
-    FD_SET(fd, &readfds);
-    timeval timeout = { 0, 0 };
-    if (select(fd + 1, &readfds, NULL, NULL, &timeout) > 0) {
-        char buf[4096];
-        auto size = read(fd, buf, sizeof(buf));
-        if (size == 0) return false;
-        if (size > 0) {
-            input_write(buf, size);
-        }
-    }
-    return true;
-}
-
-void Terminal::output_callback(const char* s, size_t len, void* user)
-{
-    write(*(int*)user, s, len);
-}
-
-int Terminal::damage(VTermRect rect, void *user)
-{
-    return ((Terminal*)user)->damage(rect.start_row, rect.start_col, rect.end_row, rect.end_col);
-}
-
-int Terminal::moverect(VTermRect dest, VTermRect src, void *user)
-{
-    return ((Terminal*)user)->moverect(dest, src);
-}
-
-int Terminal::movecursor(VTermPos pos, VTermPos oldpos, int visible, void *user)
-{
-    return ((Terminal*)user)->movecursor(pos, oldpos, visible);
-}
-
-int Terminal::settermprop(VTermProp prop, VTermValue *val, void *user)
-{
-    return ((Terminal*)user)->settermprop(prop, val);
-}
-
-int Terminal::bell(void *user)
-{
-    return ((Terminal*)user)->bell();
-}
-
-int Terminal::resize(int rows, int cols, void *user)
-{
-    return ((Terminal*)user)->resize(rows, cols);
-}
-
-int Terminal::sb_pushline(int cols, const VTermScreenCell *cells, void *user)
-{
-    return ((Terminal*)user)->sb_pushline(cols, cells);
-}
-
-int Terminal::sb_popline(int cols, VTermScreenCell *cells, void *user)
-{
-   return ((Terminal*)user)->sb_popline(cols, cells);
-}
-
-#if 0
-std::pair<int, int> createSubprocessWithPty(int rows, int cols, const char* prog, const std::vector<std::string>& args = {}, const char* TERM = "xterm-256color")
-{
-    int fd;
-    struct winsize win = { (unsigned short)rows, (unsigned short)cols, 0, 0 };
-    auto pid = forkpty(&fd, NULL, NULL, &win);
-    if (pid < 0) throw std::runtime_error("forkpty failed");
-    //else
-    if (!pid) {
-        signal(SIGTERM, SIG_DFL);
-        signal(SIGINT, SIG_DFL);
-        setenv("TERM", TERM, 1);
-        char ** argv = new char *[args.size() + 2];
-        argv[0] = strdup(prog);
-        for (int i = 1; i <= args.size(); i++) {
-            argv[i] = strdup(args[i - 1].c_str());
-        }
-        argv[args.size() + 1] = NULL;
-        if (execvp(prog, argv) < 0) exit(-1);
-    }
-    //else 
-    return { pid, fd };
-}
-
-std::pair<int, int> doWithPty(int rows, int cols, std::function<int()> func)
-{
-    int fd;
-    struct winsize win = { (unsigned short)rows, (unsigned short)cols, 0, 0 };
-    auto pid = forkpty(&fd, NULL, NULL, &win);
-    if (pid < 0) throw std::runtime_error("forkpty failed");
-    //else
-    if (!pid) {
-        signal(SIGTERM, SIG_DFL);
-        signal(SIGINT, SIG_DFL);
-        _Exit(func());
-    }
-    //else 
-    return { pid, fd };
-}
-
-std::pair<pid_t,int> waitpid(pid_t pid, int options)
-{
-    int status;
-    auto done_pid = waitpid(pid, &status, options);
-    return {done_pid, status};
-}
-
-class Subprocess {
-    pid_t pid; // pid = 0 means already done
-    int status;
-public:
-    Subprocess(const char* cmd, const std::vector<std::string>& args = {}) {
-        pid = fork();
-        if (pid < 0) throw std::runtime_error("fork failed");
-        //else
-        if (pid > 0) return;
-        //else
-        char* argv[args.size() + 2];
-        argv[0] = strdup(cmd);
-        for (int i = 1; i <= args.size(); i++) {
-            argv[i] = strdup(args[i - 1].c_str());
-        }
-        argv[args.size() + 1] = NULL;
-        if (execvp(cmd, argv) < 0) _Exit(-1);
-    }
-    ~Subprocess() {
-        getStatus(); // wait if not done yet
-    }
-    int getStatus() {
-        if (!pid) return status;
-        //else
-        auto donepid = waitpid(pid, &status, 0);
-        if (donepid == (pid_t)-1) throw std::runtime_error("waitpid error");
-        // else
-        if (donepid == pid) pid = 0; // mark as done
-        return status;
-    }
-    operator int() {
-        return getStatus();
-    }
-    operator bool() {
-        return getStatus() == 0;
-    }
-};
-
-int ui(bool login)
-{
-    SDL_SetHint(SDL_HINT_VIDEO_DOUBLE_BUFFER, "1");
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << SDL_GetError() << std::endl;
-    	return 1;
-    }
-    if (TTF_Init() < 0) {
-        std::cerr << "TTF_Init: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-    TTF_Font* font = TTF_OpenFont("/usr/share/fonts/vlgothic/VL-Gothic-Regular.ttf", 48);
-    //TTF_Font* font = TTF_OpenFont("RictyDiminished-Regular.ttf", 48);
-    if (font == NULL) {
-        std::cerr << "TTF_OpenFont: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_Window* window = SDL_CreateWindow("term",SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,1024,768,SDL_WINDOW_SHOWN);
-    if (window == NULL) {
-        std::cerr << "SDL_CreateWindow: " << SDL_GetError() << std::endl;
-    	return 1;
-    }
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
-    if (renderer == NULL) {
-        std::cerr << "SDL_CreateRenderer: " << SDL_GetError() << std::endl;
-    	return 1;
-    }
-
-    const int rows = 32, cols = 100;
-    auto subprocess = createSubprocessWithPty(rows, cols, getenv("SHELL"), {"-"});
-    /*
-    auto subprocess = doWithPty(rows, cols, [rows,cols]{
-        std::cout << "rows=" << rows << ", cols=" << cols << std::endl;
-        if (Subprocess("sleep", {"3"})) {
-            std::cout << "sleep OK" << std::endl;
-        }
-        for (int i = 0; i < 100; i++) {
-            std::cout << "count is " << i << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-        return 5;
     });
-    */
+    auto controller = Gtk::EventControllerKey::create();
+    controller->signal_key_pressed().connect([this](guint keyval, guint keycode, Gdk::ModifierType state){
+        if (!vterm) return false;
+        //std::cout << "key pressed: " << keyval << "," << keycode << "," << (int)state << std::endl;
+        if (keyval == GDK_KEY_ISO_Left_Tab) return false;
+        //else
+        int _mod = VTERM_MOD_NONE;
+        if (((int)state & (int)Gdk::ModifierType::SHIFT_MASK) != 0) _mod |= VTERM_MOD_SHIFT;
+        if (((int)state & (int)Gdk::ModifierType::ALT_MASK) != 0) _mod |= VTERM_MOD_ALT;
+        if (((int)state & (int)Gdk::ModifierType::CONTROL_MASK) != 0) _mod |= VTERM_MOD_CTRL;
+        auto mod = (VTermModifier)_mod;
 
-    auto pid = subprocess.first;
-
-    Terminal terminal(subprocess.second/*fd*/, rows, cols, font);
-
-    std::pair<pid_t, int> rst;
-    while ((rst = waitpid(pid, WNOHANG)).first != pid) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255 );
-        SDL_RenderClear(renderer);
-        SDL_Event ev;
-        while(SDL_PollEvent(&ev)) {
-            if (ev.type == SDL_QUIT || (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE && (ev.key.keysym.mod & KMOD_CTRL))) {
-                kill(pid, SIGTERM);
-            } else {
-                terminal.processEvent(ev);
+        switch (keyval) {
+        case GDK_KEY_Return:
+        case GDK_KEY_KP_Enter:
+            vterm_keyboard_key(vterm, VTERM_KEY_ENTER, mod);
+            return true;
+        case GDK_KEY_BackSpace:
+            vterm_keyboard_key(vterm, VTERM_KEY_BACKSPACE, mod);
+            return true;
+        case GDK_KEY_Escape:
+            vterm_keyboard_key(vterm, VTERM_KEY_ESCAPE, mod);
+            return true;
+        case GDK_KEY_Tab:
+            vterm_keyboard_key(vterm, VTERM_KEY_TAB, mod);
+            return true;
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Up:
+            vterm_keyboard_key(vterm, VTERM_KEY_UP, mod);
+            return true;
+        case GDK_KEY_Down:
+        case GDK_KEY_KP_Down:
+            vterm_keyboard_key(vterm, VTERM_KEY_DOWN, mod);
+            return true;
+        case GDK_KEY_Left:
+        case GDK_KEY_KP_Left:
+            vterm_keyboard_key(vterm, VTERM_KEY_LEFT, mod);
+            return true;
+        case GDK_KEY_Right:
+        case GDK_KEY_KP_Right:
+            vterm_keyboard_key(vterm, VTERM_KEY_RIGHT, mod);
+            return true;
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_KP_Page_Up:
+            vterm_keyboard_key(vterm, VTERM_KEY_PAGEUP, mod);
+            return true;
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_KP_Page_Down:
+            vterm_keyboard_key(vterm, VTERM_KEY_PAGEDOWN, mod);
+            return true;
+        case GDK_KEY_Home:
+        case GDK_KEY_KP_Home:
+            vterm_keyboard_key(vterm, VTERM_KEY_HOME, mod);
+            return true;
+        case GDK_KEY_End:
+        case GDK_KEY_KP_End:
+            vterm_keyboard_key(vterm, VTERM_KEY_END, mod);
+            return true;
+        default:
+            if (keyval < 127) {
+                vterm_keyboard_unichar(vterm, keyval, mod);
+                return true;
             }
         }
+        //else
+        return false;
+    }, false);
+    add_controller(controller);
 
-        terminal.processInput();
+    set_can_focus();
+    set_focusable();
+    set_can_target();
+    set_focus_on_click();
 
-        SDL_Rect rect = { 0, 0, 1024, 768 };
-        terminal.render(renderer, rect);
-        SDL_RenderPresent(renderer);
+    signal_resize().connect([this](int width, int height) {
+        //std::cout << "Widget resized" << std::endl;
+        surface = Cairo::ImageSurface::create(Cairo::Surface::Format::ARGB32, width, height);
+        auto rows = height / font_size, cols = width / (font_size / 2);
+        //std::cout << "set_size " << rows << ',' << cols << std::endl;
+        matrix.set_size(rows, cols);
+        if (!vterm) {
+            vterm = vterm_new(rows,cols);
+            vterm_set_utf8(vterm, 1);
+            screen = vterm_obtain_screen(vterm);
+            static const VTermScreenCallbacks screen_callbacks = {
+                [](VTermRect rect, void *user) { // damage
+                    auto terminal = (Terminal*)user;
+                    for (int row = rect.start_row; row < rect.end_row; row++) {
+                        for (int col = rect.start_col; col < rect.end_col; col++) {
+                            terminal->matrix(row, col) = 1;
+                        }
+                    }
+                    terminal->queue_draw();
+                    return 0;
+                },
+                [](VTermRect dest, VTermRect src, void *user) { // moverect
+                    return 0;
+                },
+                [](VTermPos pos, VTermPos oldpos, int visible, void *user) {// movecursor
+                    auto terminal = (Terminal*)user;
+                    terminal->cursor_pos = pos;
+                    terminal->queue_draw();
+                    return 0;
+                },
+                [](VTermProp prop, VTermValue *val, void *user) {// settermprop
+                    return 0;
+                },
+                [](void *user) { //bell
+                    auto terminal = (Terminal*)user;
+                    if (terminal->ringing) terminal->ringing.value().disconnect();
+                    terminal->ringing = Glib::signal_timeout().connect([terminal]() {
+                        terminal->ringing = std::nullopt;
+                        terminal->queue_draw();
+                        return false; // timer will automatically be disconnected
+                    }, 100);
+                    terminal->queue_draw();
+                    return 0;
+                },
+                [](int rows, int cols, void *user) { // resize
+                    return 0;
+                },
+                [](int cols, const VTermScreenCell *cells, void *user) { // sb_pushline
+                    return 0;
+                },
+                [](int cols, VTermScreenCell *cells, void *user) {// sb_popline
+                    return 0;
+                }
+            };
+            vterm_screen_set_callbacks(screen, &screen_callbacks, this);
+            m_signal_resize_terminal(cols, rows);
+            m_signal_open_terminal();
+        } else {
+            vterm_set_size(vterm, rows, cols);
+            m_signal_resize_terminal(cols, rows);
+        }
+        vterm_screen_reset(screen, 1);
+        matrix.fill(0);
+        cursor_pos.col = cursor_pos.row = 0;
+        auto cairo = Cairo::Context::create(surface);
+        cairo->set_source_rgb(0, 0, 0);
+        cairo->rectangle(0, 0, width, height);
+        cairo->fill();
+    });
+    signal_state_flags_changed().connect([this](Gtk::StateFlags previous_flags) {
+        if (((int)previous_flags & (int)Gtk::StateFlags::FOCUSED) != ((int)get_state_flags() & (int)Gtk::StateFlags::FOCUSED)) {
+            queue_draw();
+        }
+    });
+}
+
+Terminal::~Terminal() {
+    disconnect();
+    if (vterm) {
+        vterm_free(vterm);
+        vterm = nullptr;
     }
-    std::cout << "Process exit status: " << rst.second << std::endl;
-
-    TTF_Quit();
-    SDL_Quit();
-    return 0;
-}
-#endif
-
-static int _main(int,char*[])
-{
-    return 0;
 }
 
-#ifdef __MAIN_MODULE__
-int main(int argc, char* argv[]) { return _main(argc, argv); }
-#endif
-
+void Terminal::connect(int fd) { 
+    this->fd = fd;
+    if (!vterm) std::logic_error("vterm has not been initialized");
+    vterm_output_set_callback(vterm, [](const char* s, size_t len, void* user) {
+        write(*(int*)user, s, len);
+    }, (void*)&(this->fd));
+}
+void Terminal::disconnect() { 
+    this->fd = -1;
+    if (vterm) vterm_output_set_callback(vterm, NULL, NULL);
+}
+void Terminal::process_input(const char* buf, size_t len) {
+    if (!vterm) std::logic_error("vterm has not been initialized");
+    vterm_input_write(vterm, buf, len);
+}

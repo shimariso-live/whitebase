@@ -1,13 +1,59 @@
 #!/bin/sh
-XDG_RUNTIME_DIR=/run/weston
-LOGFILE=/var/log/weston.log
-TTY=1
+HOME=/root
 
-if [ -d /proc/xen ]; then
-	ADDITIONAL_OPTS="--use-pixman"
+. /etc/locale.conf
+
+export LANG HOME
+
+if [ "$1" == "rdp" ]; then
+	# RDP version
+	XDG_RUNTIME_DIR=/run/weston-rdp
+	LOGFILE=/var/log/weston-rdp.log
+	SHELL=kiosk-shell.so
+	WIDTH=1024
+	HEIGHT=768
+
+	mkdir -p $XDG_RUNTIME_DIR
+	export XDG_RUNTIME_DIR
+
+	if [ -f /etc/conf.d/weston-rdp ]; then
+		. /etc/conf.d/weston-rdp
+	fi
+
+	echo -e '[shell]\nlocking=false' > $XDG_RUNTIME_DIR/weston.ini
+	if [ "$SHELL" == "kiosk-shell.so" ]; then
+		echo -e '[autolaunch]\npath=/usr/sbin/start-ui\nwatch=true' >> $XDG_RUNTIME_DIR/weston.ini
+	fi
+
+	if [ ! -f "$HOME/.rdp/weston.key" ]; then
+		mkdir -p $HOME/.rdp
+		winpr-makecert -rdp -n weston -path $HOME/.rdp > /dev/null
+	fi
+
+	exec /usr/bin/weston --config=$XDG_RUNTIME_DIR/weston.ini --log=$LOGFILE --backend=rdp-backend.so --address=:: --rdp-tls-cert=$HOME/.rdp/weston.crt --rdp-tls-key=$HOME/.rdp/weston.key --modules=systemd-notify.so --shell=$SHELL --width=$WIDTH --height=$HEIGHT --no-clients-resize
+else
+	# GPU version
+	XDG_RUNTIME_DIR=/run/weston
+	LOGFILE=/var/log/weston.log
+	TTY=1
+
+	mkdir -p $XDG_RUNTIME_DIR
+	export XDG_RUNTIME_DIR
+
+	echo -e '[shell]\nlocking=false\n[autolaunch]\npath=/usr/sbin/start-ui\nwatch=true' > $XDG_RUNTIME_DIR/weston.ini
+
+	X11_LAYOUT=`localectl | grep 'X11 Layout: ' | sed 's/.*: //'`
+	X11_MODEL=`localectl | grep 'X11 Model: ' | sed 's/.*: //'`
+
+	if [ "$X11_LAYOUT" != "n/a" ]; then
+		echo -e '[keyboard]\nkeymap_layout='$X11_LAYOUT'\nkeymap_model='$X11_MODEL >> $XDG_RUNTIME_DIR/weston.ini
+	fi
+
+	# wait for GPU driver to be loaded
+	while [ ! -e "/dev/dri/renderD128" ]; do
+		sleep 1
+		((c++)) && ((c==3)) && break
+	done
+
+	exec /usr/bin/weston --config=$XDG_RUNTIME_DIR/weston.ini --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
 fi
-
-mkdir -p $XDG_RUNTIME_DIR
-export XDG_RUNTIME_DIR
-
-exec /usr/bin/weston --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS

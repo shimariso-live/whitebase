@@ -1,243 +1,55 @@
-#include <unistd.h>
 #include <pty.h>
-#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/xattr.h>
-#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <security/pam_appl.h>
-#include <security/pam_misc.h>
-#include <libsmartcols/libsmartcols.h>
-
 #include <fstream>
 
+#include <uuid/uuid.h>
+#include <security/pam_appl.h>
+#include <security/pam_misc.h>
+
 #include <argparse/argparse.hpp>
-#include <yajl/yajl_tree.h>
 
-#include "walbrixd.h"
-#include "terminal.h"
-#include "sdlplusplus.h"
-
-#include "wbc.h"
-#include "status.h" 
-#include "shutdown.h"
-#include "installer.h"
 #include "common.h"
-
-const static std::filesystem::path vm_root("/var/vm"), run_root("/run/vm");
-
-std::shared_ptr<SDL_Surface> create_transparent_surface(int w, int h)
-{
-    return make_shared(SDL_CreateRGBSurface(0, w, h, 32,0xff, 0xff00, 0xff0000, 0xff000000));
-}
+#include "gtk4ui.h"
+#include "list.h"
+#include "volume.h"
+#include "wb.h"
 
 int console(const char* vmname);
 int console(const std::vector<std::string>& args);
 int monitor(const std::vector<std::string>& args);
-
-static bool is_running(const std::string& vmname)
-{
-    std::filesystem::path run_root("/run/vm");
-    auto run_vm = run_root / vmname;
-    auto serial_sock = run_vm / "serial.sock";
-    if (!std::filesystem::exists(serial_sock) || !std::filesystem::is_socket(serial_sock)) return false;
-    auto fd = open(run_vm.c_str(), O_RDONLY, 0);
-    if (fd < 0) return false;
-    bool running = (flock(fd, LOCK_EX|LOCK_NB) < 0 && errno == EWOULDBLOCK);
-    close(fd);
-    return running;
-}
-
-static int write(int fd, const std::string& str)
-{
-    return ::write(fd, str.c_str(), str.length());
-}
+int install_cmdline(const std::vector<std::string>& args);
 
 static void with_qmp_session(const std::string& name, std::function<void(int)> func, std::function<void(void)> noavail = [](){})
 {
-    auto socket_path = run_root / name / "qmp.sock";
-    if (!std::filesystem::exists(socket_path) || !std::filesystem::is_socket(socket_path)) {
-        noavail();
-        return;
-    }
-    //else
-    with_socket(socket_path, [&func](int fd) {
-        read_json_object(fd); // skip {"QMP":{}}
-        if (write(fd, "{\"execute\":\"qmp_capabilities\"}\r\n") < 0) {
-            throw std::runtime_error("qmp write(qmp_capabilities_cmd) failed");
-        }
-        if (!read_json_object(fd)) {
-            throw std::runtime_error("qmp_capabilities_cmd failed");
-        }
+    with_qmp_session<void*>(name, [&func](int fd) {
         func(fd);
+        return nullptr;
+    }, [&noavail]() {
+        noavail();
+        return nullptr;
     });
 }
 
 static void with_qga(const std::string& name, std::function<void(int)> func, std::function<void(void)> noavail = [](){})
 {
-    auto socket_path = run_root / name / "qga.sock";
-    if (!std::filesystem::exists(socket_path) || !std::filesystem::is_socket(socket_path)) {
-        noavail();
-        return;
-    }
-    //else
-    with_socket(socket_path, [&func](int fd) {
+    with_qga<void*>(name, [&func](int fd) {
         func(fd);
+        return nullptr;
+    }, [&noavail]() {
+        noavail();
+        return nullptr;
     });
 }
 
-static std::map<std::string,std::tuple<bool,std::optional<uint16_t>/*cpu*/,std::optional<uint32_t>/*memory*/,std::optional<std::string>/*ip_address*/>> list()
+template <typename T> std::optional<T> with_vmdir(const std::string& name, std::function<T(const std::filesystem::directory_entry&)> func)
 {
-    std::map<std::string,std::tuple<bool,std::optional<uint16_t>,std::optional<uint32_t>,std::optional<std::string>>> vms;
-    if (std::filesystem::exists(vm_root) && std::filesystem::is_directory(vm_root)) {
-        for (const auto& d : std::filesystem::directory_iterator(vm_root)) {
-            if (!d.is_directory()) continue;
-            auto name = d.path().filename().string();
-            if (name[0] != '@') {
-                vms[name] = {false,std::nullopt,std::nullopt,std::nullopt};
-            }
-        }
-    }
-    if (std::filesystem::exists(run_root) && std::filesystem::is_directory(run_root)) {
-        for (const auto& d : std::filesystem::directory_iterator(run_root)) {
-            auto run_dir = d.path();
-            auto name = run_dir.filename().string();
-            if (!is_running(name)) continue;
-            //else
-            std::optional<uint16_t> cpu = std::nullopt;
-            std::optional<uint32_t> memory = std::nullopt;
-            std::optional<std::string> ip_address = std::nullopt;
-            try {
-                with_qmp_session(name, [&memory](int fd) {
-                    write(fd, "{\"execute\":\"query-memory-size-summary\"}\r\n");
-                    auto memory_size_summary = read_json_object(fd);
-                    memory = with_object_property<uint32_t>(memory_size_summary.get(), "return", [](const yajl_val val) {
-                        return with_object_property<uint32_t>(val, "base-memory", [](const yajl_val val) {
-                            return (YAJL_IS_INTEGER(val))? std::make_optional((uint32_t)(YAJL_GET_INTEGER(val) / 1024 / 1024)) : std::nullopt;
-                        });
-                    });
-                }, []() {
-                    // do nothing when QMP socket is not available
-                });
-            }
-            catch (const std::runtime_error& ex) {
-                std::cerr << ex.what() << std::endl;
-            }
-            // query qga
-            try {
-                with_qga(name, [&cpu,&ip_address](int fd) {
-                    write(fd, "{\"execute\":\"guest-get-osinfo\"}\r\n");
-                    auto os_info = read_json_object(fd);
-                    auto kernel_ver = with_object_property<std::string>(os_info.get(), "return", [](const yajl_val val) {
-                        return with_object_property<std::string>(val, "kernel-release", [](const yajl_val val) {
-                            return YAJL_IS_STRING(val)? std::make_optional(val->u.string) : std::nullopt;
-                        });
-                    });
-                    write(fd, "{\"execute\":\"guest-get-vcpus\"}\r\n");
-                    auto vcpus = read_json_object(fd);
-                    cpu = with_object_property<uint16_t>(vcpus.get(), "return", [](const yajl_val val) -> std::optional<uint16_t> {
-                        if (!YAJL_IS_ARRAY(val)) return std::nullopt;
-                        uint16_t cnt = 0;
-                        for (int i = 0; i < val->u.array.len; i++) {
-                            auto item = val->u.array.values[i];
-                            auto online = with_object_property<bool>(item, "online", [](const yajl_val val) -> std::optional<bool> {
-                                return YAJL_IS_TRUE(val) ? true : false;
-                            });
-                            if (online.value_or(false)) cnt++;
-                        }
-                        return cnt;
-                    });
-                    // {"return": [{"online": true, "can-offline": true, "logical-id": 1}, {"online": true, "can-offline": false, "logical-id": 0}]}
-                    write(fd, "{\"execute\":\"guest-network-get-interfaces\"}\r\n");
-                    auto network_interfaces = read_json_object(fd);
-                    // {"return": [{"name": "lo", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "127.0.0.1", "prefix": 8}, {"ip-address-type": "ipv6", "ip-address": "::1", "prefix": 128}], "statistics": {"tx-packets": 40, "tx-errs": 0, "rx-bytes": }
-                    //{"name": "eth0", "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "192.168.62.81", "prefix": 24}, {"ip-address-type": "ipv6", "ip-address": "2409:11:8720:2100:216:3eff:fe00:ccbe", "prefix": 64}, {"ip-address-type": "ipv6", "ip-address": "fe80::216:3eff:fe00:ccbe", "prefix": 64}]
-                    ip_address = with_object_property<std::string>(network_interfaces.get(), "return", [](const yajl_val val) -> std::optional<std::string> {
-                        if (!YAJL_IS_ARRAY(val)) return std::nullopt;
-                        for (int i = 0; i < val->u.array.len; i++) {
-                            auto item = val->u.array.values[i];
-                            if (!YAJL_IS_OBJECT(item)) continue;
-                            auto ifname = with_object_property<std::string>(item, "name", [](const yajl_val val) { 
-                                return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt; 
-                            });
-                            if (!ifname.has_value() || ifname == "lo") continue;
-                            auto ip_address = with_object_property<std::string>(item, "ip-addresses", [](const yajl_val val) -> std::optional<std::string> {
-                                if (!YAJL_IS_ARRAY(val)) return std::nullopt;
-                                for (int i = 0; i < val->u.array.len; i++) {
-                                    auto item = val->u.array.values[i];
-                                    auto ip_address_type = with_object_property<std::string>(item, "ip-address-type", [](const yajl_val val) {
-                                        return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt;
-                                    });
-                                    if (ip_address_type != "ipv4") continue;
-                                    auto ip_address = with_object_property<std::string>(item, "ip-address", [](const yajl_val val) {
-                                        return YAJL_IS_STRING(val)? std::make_optional<std::string>(val->u.string) : std::nullopt;
-                                    });
-                                    return ip_address;
-                                }
-                                return std::nullopt;
-                            });
-                            if (ip_address.has_value()) return ip_address;
-                        }
-                        return std::nullopt;
-                    });
-                }, []() {
-                    // do nothing when QGA socket is not available
-                });
-            }
-            catch (const std::runtime_error& ex) {
-                std::cerr << ex.what() << std::endl;
-            }
-            vms[name] = {true, cpu, memory, ip_address};
-        }
-    }
-    // TODO: use yajl to get details via qmp https://lloyd.github.io/yajl/
-    return vms;
-}
-
-static bool is_autostart(const std::string& vmname)
-{
-    std::filesystem::path multi_user_target_wants("/etc/systemd/system/multi-user.target.wants");
-    return std::filesystem::exists(multi_user_target_wants / (std::string("vm@") + vmname + ".service"));
-}
-
-static int list(const std::vector<std::string>& args)
-{
-    auto vms = list();
-
-    std::shared_ptr<libscols_table> table(scols_new_table(), scols_unref_table);
-    if (!table) throw std::runtime_error("scols_new_table() failed");
-    scols_table_new_column(table.get(), "NAME", 0.1, 0);
-    scols_table_new_column(table.get(), "RUNNING", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "AUTOSTART", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "CPU", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "MEMORY", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "IP ADDRESS", 0.1, SCOLS_FL_RIGHT);
-    auto sep = scols_table_new_line(table.get(), NULL);
-    scols_line_set_data(sep, 0, "--------");
-    scols_line_set_data(sep, 1, "-------");
-    scols_line_set_data(sep, 2, "---------");
-    scols_line_set_data(sep, 3, "---");
-    scols_line_set_data(sep, 4, "-------");
-    scols_line_set_data(sep, 5, "---------------");
-
-    for (const auto& i:vms) {
-        auto line = scols_table_new_line(table.get(), NULL);
-        if (!line) throw std::runtime_error("scols_table_new_line() failed");
-        scols_line_set_data(line, 0, i.first.c_str());
-        scols_line_set_data(line, 1, std::get<0>(i.second)? "*" : "");
-        scols_line_set_data(line, 2, is_autostart(i.first)? "yes":"no");
-        const auto& cpu = std::get<1>(i.second);
-        scols_line_set_data(line, 3, cpu.has_value()? std::to_string(cpu.value()).c_str() : "-");
-        const auto& memory = std::get<2>(i.second);
-        scols_line_set_data(line, 4, memory.has_value()? std::to_string(memory.value()).c_str() : "-");
-        const auto& ip_address = std::get<3>(i.second);
-        scols_line_set_data(line, 5, ip_address.value_or("-").c_str());
-    }
-    scols_print_table(table.get());
-
-    return 0;
+    std::filesystem::path vm_path = vm_root / name;
+    if (!std::filesystem::exists(vm_path) || !std::filesystem::is_directory(vm_path)) return std::nullopt;
+    return func(std::filesystem::directory_entry(vm_path));
 }
 
 int start(const std::vector<std::string>& args)
@@ -296,12 +108,10 @@ static int stop(const std::vector<std::string>& args)
     auto vmname = program.get<std::string>("vmname");
     if (vmname == "@all") {
         if (enter_console) std::cout << "--console ignored." << std::endl;
-        auto vms = list();
-        for (const auto& i:vms) {
-            if (!std::get<0>(i.second)) continue;
-            std::cout << (force? "Forcefully stopping " : "Stopping ") << i.first << std::endl;
-            check_call({"systemctl", force? "kill":"stop", "--no-block", std::string("vm@") + i.first});
-        }
+        for_each_running_vm([force](const std::string& name) {
+            std::cout << (force? "Forcefully stopping " : "Stopping ") << name << std::endl;
+            check_call({"systemctl", force? "kill":"stop", "--no-block", std::string("vm@") + name});
+        });
     } else {
         if (!is_running(vmname)) {
             std::cerr << vmname << " is not running" << std::endl;
@@ -423,6 +233,11 @@ static int ping(const std::vector<std::string>& args)
     return 0;
 }
 
+static void set_autostart(const std::string& vmname, bool autostart)
+{
+    check_call({"systemctl", autostart? "enable" : "disable", std::string("vm@") + vmname});
+}
+
 int autostart(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
@@ -444,9 +259,9 @@ int autostart(const std::vector<std::string>& args)
         if (action == "show") {
             std::cout << "autostart is " << (is_autostart(vmname)? "on" : "off") << std::endl;
         } else if (action == "on") {
-            check_call({"systemctl","enable",std::string("vm@") + vmname});
+            set_autostart(vmname, true);
         } else if (action == "off") {
-            check_call({"systemctl","disable",std::string("vm@") + vmname});
+            set_autostart(vmname, false);
         } else {
             std::cerr << "Invalid action specified." << std::endl;
             return -1;
@@ -497,483 +312,11 @@ static int journal(const std::vector<std::string>& args)
     return 0; // no reach here, though
 }
 
-
-bool auth(UIContext& uicontext)
-{
-    bool rst = true;
-
-    auto font_def = std::make_pair(uicontext.FONT_PROPOTIONAL, 40);
-    auto font = uicontext.registry.fonts(font_def);
-
-    struct Env {
-        UIContext& uicontext;
-        TTF_Font* font;
-        int result = 0;
-        bool cancelled = false;
-    } env = {
-        uicontext, font
-    };
-    struct pam_conv conv = {
-        [](int num_msg, const struct pam_message** msg, struct pam_response** resp, void* appdata_ptr) {
-            Env& env = *((Env*)appdata_ptr);
-            struct pam_response *aresp;
-            if (num_msg <= 0 || num_msg > PAM_MAX_NUM_MSG) return PAM_CONV_ERR;
-            if ((aresp = (pam_response*)calloc(num_msg, sizeof *aresp)) == NULL) return PAM_BUF_ERR;
-
-            for (int i = 0; i < num_msg; i++) {
-                aresp[i].resp_retcode = 0;
-                if (msg[i]->msg_style == PAM_PROMPT_ECHO_OFF || msg[i]->msg_style == PAM_PROMPT_ECHO_ON) {
-                    std::string password;
-                    struct TextureAndRect {
-                        SDL_Texture* texture = NULL;
-                        SDL_Rect rect;
-                        void operator()() { if (texture) SDL_DestroyTexture(texture); texture = NULL; }
-                        ~TextureAndRect() { (*this)(); }
-                        operator bool() { return (texture != NULL); }
-                        const TextureAndRect& operator()(SDL_Renderer* renderer,SDL_Surface* surface) {
-                            if (texture) SDL_DestroyTexture(texture);
-                            texture = SDL_CreateTextureFromSurface(renderer, surface);
-                            rect.w = surface->w;
-                            rect.h = surface->h;
-                            return *this;
-                        }
-                        const SDL_Rect& operator()(int x, int y) { rect.x = x; rect.y = y; return rect; }
-                        int operator()(SDL_Renderer* renderer) { if (texture) return SDL_RenderCopy(renderer, texture, NULL, &rect); else return -1; }
-                    } password_texture, message_texture;
-                    while (true) {
-                        env.uicontext.render();
-                        if (!password_texture) {
-                            std::string message(msg[i]->msg);
-                            message += ' ';
-                            for (int i = 0; i < password.length(); i++) message += '*';
-                            auto surface = TTF_RenderUTF8_Blended(env.font, message.c_str(), (SDL_Color){0, 0, 0, 0});
-                            password_texture(env.uicontext, surface);
-                            password_texture(0, env.uicontext.height * 3 / 5);
-                            SDL_FreeSurface(surface);
-                        }
-                        password_texture(env.uicontext);
-
-                        if (!process_event([&env,&password,&password_texture](auto ev) {
-                            if (ev.type == SDL_TEXTINPUT) {
-                                for (int i = 0; i < strlen(ev.text.text); i++) {
-                                    if (password.length() < 32) password += (char)ev.text.text[i];
-                                }
-                                if (password_texture) password_texture();
-                            } else if (ev.type == SDL_KEYDOWN) {
-                                if (ev.key.keysym.sym == SDLK_RETURN || ev.key.keysym.sym == SDLK_KP_ENTER) {
-                                    SDL_RenderPresent(env.uicontext);
-                                    return false;
-                                } else if (ev.key.keysym.sym == SDLK_BACKSPACE) {
-                                    if (password.length() > 0) {
-                                        password.pop_back();
-                                        if (password_texture) password_texture();
-                                    }
-                                } else if (ev.key.keysym.sym == SDLK_ESCAPE) {
-                                    env.cancelled = true;
-                                    SDL_RenderPresent(env.uicontext);
-                                    return false;
-                                }
-                            }
-                            return true;
-                        })) break;
-
-                        if (env.result == PAM_PERM_DENIED && !message_texture) {
-                            auto surface = TTF_RenderUTF8_Blended(env.font, "パスワードが正しくありません", (SDL_Color){255, 0, 0, 0});
-                            message_texture(env.uicontext, surface);
-                            message_texture(0, password_texture.rect.y + password_texture.rect.h);
-                            SDL_FreeSurface(surface);
-                        }
-                        message_texture(env.uicontext);
-
-                        auto caret_rect = (SDL_Rect){password_texture.rect.w, password_texture.rect.y, 4, password_texture.rect.h};
-                        Uint8 alpha = std::abs(std::sin((SDL_GetTicks() % 2000 * pi * 2 / 2000))) * 255;
-                        SDL_SetRenderDrawColor(env.uicontext, 0, 0, 0, alpha);
-                        SDL_SetRenderDrawBlendMode(env.uicontext, SDL_BLENDMODE_BLEND);
-                        SDL_RenderFillRect(env.uicontext, &caret_rect);
-                        SDL_RenderPresent(env.uicontext);
-                    }
-                    aresp[i].resp = strdup(password.c_str());
-                }
-            }
-            *resp = aresp;
-            return PAM_SUCCESS;
-        },
-        &env
-    };
-    pam_handle_t *pamh;
-    pam_start("login", "root", &conv, &pamh);
-    do {
-        env.result = pam_authenticate(pamh, 0);
-    } while (env.result != PAM_SUCCESS && env.result != PAM_ABORT && env.result != PAM_MAXTRIES && !env.cancelled);
-    pam_end(pamh, env.result);
-
-    uicontext.registry.fonts.discard(font_def);
-
-    return (env.result != PAM_ABORT && env.result != PAM_MAXTRIES && !env.cancelled);
-}
-
-bool title(UIContext& uicontext)
-{
-    auto title_background = std::get<0>(uicontext.create_texture_from_transient_surface("title_background.png"));
-    auto title = uicontext.create_texture_from_transient_surface("title.png");
-    SDL_Rect title_rect = { (uicontext.width - std::get<1>(title)) / 2, uicontext.height * 1 / 3, std::get<1>(title), std::get<2>(title) };
-
-    auto font = std::make_pair(uicontext.FONT_PROPOTIONAL, 48);
-
-    auto title_message = uicontext.render_font_as_texture(font, "開始するにはEnterを押してください", {255, 255, 255, 255});
-    SDL_Rect title_message_rect = { (uicontext.width - std::get<1>(title_message)) / 2, uicontext.height * 3 / 4, std::get<1>(title_message), std::get<2>(title_message) };
-
-    auto copyright = uicontext.render_font_as_texture(font, "Copyright© 2009-2021 Walbrix Corporation", {0, 0, 0, 0});
-    SDL_Rect copyright_rect = { (uicontext.width - std::get<1>(copyright)) / 2, uicontext.height - std::get<2>(copyright) - 20, std::get<1>(copyright), std::get<2>(copyright) };
-    uicontext.registry.fonts.discard(font);
-
-    RenderFunc rf(uicontext,
-        [title_background,title,title_rect,copyright,copyright_rect](auto renderer, bool) {
-            SDL_RenderCopy(renderer, title_background.get(), NULL, NULL);
-            SDL_RenderCopy(renderer, std::get<0>(title).get(), NULL, &title_rect);
-            SDL_RenderCopy(renderer, std::get<0>(copyright).get(), NULL, &copyright_rect);
-            return true;            
-        }
-    );
-
-    {
-        RenderFunc rf(uicontext,
-            [&title_message,&title_message_rect](auto renderer,bool) {
-                Uint8 alpha = std::abs(std::sin((SDL_GetTicks() % 4000 * pi * 2 / 4000))) * 255;
-                SDL_SetTextureAlphaMod(std::get<0>(title_message).get(), alpha);
-                SDL_RenderCopy(renderer, std::get<0>(title_message).get(), NULL, &title_message_rect);
-                return true;
-            }
-        );
-
-        while (process_event([](auto ev) { return !(ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_RETURN); })) {
-            uicontext.render();
-            SDL_RenderPresent(uicontext);
-        }
-    }
-
-    bool rst = auth(uicontext);
-
-    return rst;
-}
-
-int local_console(UIContext& uicontext, const char* prog, const std::vector<std::string>& args = {})
-{
-    const int rows = 32, cols = 80;
-
-    int fd;
-    struct winsize win = { (unsigned short)rows, (unsigned short)cols, 0, 0 };
-    auto pid = forkpty(&fd, NULL, NULL, &win);
-    if (pid < 0) throw std::runtime_error("forkpty failed");
-    //else
-    if (!pid) {
-        signal(SIGTERM, SIG_DFL);
-        signal(SIGINT, SIG_DFL);
-        setenv("TERM", "xterm-256color", 1);
-        setenv("LANG", "ja_JP.utf8", 1);
-        char ** argv = new char *[args.size() + 2];
-        argv[0] = strdup(prog);
-        for (int i = 1; i <= args.size(); i++) {
-            argv[i] = strdup(args[i - 1].c_str());
-        }
-        argv[args.size() + 1] = NULL;
-        if (execvp(prog, argv) < 0) exit(-1);
-    }
-    //else 
-
-    struct AutoClose {
-        int fd;
-        AutoClose(int _fd) : fd(_fd) {;}
-        ~AutoClose() { close(fd); }
-    } autoclose_fd(fd);
-
-    auto font = uicontext.registry.fonts({uicontext.FONT_FIXED, 16});
-    Terminal terminal(fd, rows, cols, font);
-    SDL_Rect terminal_rect = { 
-        uicontext.mainmenu_width, uicontext.header_height, 
-        uicontext.width - uicontext.mainmenu_width, uicontext.height - uicontext.header_height - uicontext.footer_height
-    };
-
-    RenderFunc rf(uicontext, [&terminal,&terminal_rect](auto renderer, bool) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &terminal_rect);
-        terminal.render(renderer, terminal_rect);
-        return true;
-    });
-
-    int status;
-    while (pid != waitpid(pid, &status, WNOHANG)) {
-        uicontext.render();
-
-        process_event([&terminal](auto ev) { terminal.processEvent(ev); return true; });
-        if (!terminal.processInput()) break; // EOF detected
-
-        SDL_RenderPresent(uicontext);
-    }
-
-    return status;
-}
-
-void fallback_to_agetty(const char* tty, bool autologin = false)
-{
-    if (autologin) {
-        execl("/sbin/agetty", "/sbin/agetty", "-o", "-p -- \\u", "--autologin", "root", "--noclear", tty, getenv("TERM"), NULL);
-    }
-    //else
-    execl("/sbin/agetty", "/sbin/agetty", "-o", "-p -- \\u", "--noclear", tty, getenv("TERM"), NULL);
-}
-
-void ui(UIContext& uicontext)
-{
-    if (uicontext.tty && !uicontext.installer) {
-        while (!title(uicontext)) { ; }
-    }
-
-    auto background = std::get<0>(uicontext.create_texture_from_transient_surface("background.png"));
-
-    auto header = uicontext.create_texture_from_transient_surface("header.png");
-    uicontext.header_height = std::get<2>(header);
-
-    auto header_logo = uicontext.create_texture_from_transient_surface("header_logo.png");
-
-    auto footer = uicontext.create_texture_from_transient_surface("footer.png");
-    uicontext.footer_height = std::get<2>(footer);
-
-    auto mainmenu_panel = uicontext.create_texture_from_transient_surface("mainmenu_panel.png");
-    uicontext.mainmenu_width = std::get<1>(mainmenu_panel);
-
-    auto create_mainmenu_item_texture = [&uicontext](const char* icon_name, const char* text) {
-        auto font = uicontext.registry.fonts({uicontext.FONT_PROPOTIONAL, 32});
-        auto icon = uicontext.registry.surfaces.transient(icon_name);
-        auto surface0 = std::shared_ptr<SDL_Surface>(SDL_CreateRGBSurface(0, uicontext.mainmenu_width, uicontext.mainmenu_item_height, 32,0xff, 0xff00, 0xff0000, 0xff000000), SDL_FreeSurface);
-        auto surface1 = std::shared_ptr<SDL_Surface>(TTF_RenderUTF8_Blended(font, text, {0, 0, 0, 0}), SDL_FreeSurface);
-        //auto surface2 = std::shared_ptr<SDL_Surface>(TTF_RenderUTF8_Blended(font, text, {255, 255, 255, 255}), SDL_FreeSurface);
-        {
-            SDL_Rect rect = { (uicontext.mainmenu_item_height - icon->w) / 2, (surface0->h - icon->h) / 2, icon->w, icon->h };
-            SDL_BlitSurface(icon.get(), NULL, surface0.get(), &rect);
-        }
-        SDL_Rect rect = { uicontext.mainmenu_item_height, (surface0->h - surface1->h) / 2, surface1->w, surface1->h };
-        SDL_BlitSurface(surface1.get(), NULL, surface0.get(), &rect);
-        //rect.x += 2;
-        //rect.y += 2;
-        //SDL_BlitSurface(surface2.get(), NULL, surface0.get(), &rect);
-        return std::shared_ptr<SDL_Texture>(SDL_CreateTextureFromSurface(uicontext, surface0.get()), SDL_DestroyTexture);
-    };
-
-    Status status(uicontext);
-    Shutdown shutdown(uicontext);
-    Installer installer(uicontext);
-
-    struct MainMenuItem {
-        std::string name;
-        int y;
-        std::shared_ptr<SDL_Texture> texture;
-        std::function<void()> draw;
-        std::function<void()> on_select;
-        std::function<void()> on_deselect;
-        std::function<bool()> on_enter;
-    };
-
-    std::vector<MainMenuItem> menuitems;
-
-    int y = uicontext.mainmenu_item_height;
-    if (uicontext.installer) {
-        menuitems.push_back({"install", y, create_mainmenu_item_texture("icon_install.png", "インストール"), 
-            [&installer](){installer.draw();},[&installer](){installer.on_select();}, [&installer](){installer.on_deselect();}, [&installer](){return installer.on_enter();} });
-        y += uicontext.mainmenu_item_height;
-    }
-    menuitems.push_back({"status", y, create_mainmenu_item_texture("icon_status.png", "情報"), 
-        [&status](){status.draw();},[&status]() {status.on_select();}, [&status](){status.on_deselect();}, NULL });
-    y += uicontext.mainmenu_item_height;
-    menuitems.push_back({"console", y, create_mainmenu_item_texture("icon_console.png", "Linuxコンソール"), [](){},[]() {}, [](){}, [&uicontext](){
-        if (uicontext.tty && geteuid() == 0) {
-            local_console(uicontext, "/bin/login", {"-p", "-f", "root"});
-        } else {
-            local_console(uicontext, "bash");
-        }
-        return true; // continue with main menu
-    } });
-    y = 580;
-    if (uicontext.tty) {
-        menuitems.push_back({"shutdown", y, create_mainmenu_item_texture("icon_shutdown.png", "シャットダウン"),
-        [&shutdown](){shutdown.draw();},[&shutdown]() {shutdown.on_select();}, [&shutdown](){shutdown.on_deselect();}, [&shutdown](){return shutdown.on_enter();}});
-        y += uicontext.mainmenu_item_height;
-    }
-    if (!(uicontext.tty) || !uicontext.installer) {
-        menuitems.push_back({"back", y, create_mainmenu_item_texture("icon_back.png", uicontext.tty? "タイトルへ戻る" : "終了"), 
-            [](){},[]() {}, [](){}, [](){return false;}});
-    }
-
-    auto cursor1 = std::get<0>(uicontext.create_texture_from_transient_surface("mainmenu_cursor1.png"));
-    auto cursor2 = std::get<0>(uicontext.create_texture_from_transient_surface("mainmenu_cursor2.png"));
-
-    int selected = 0;
-    menuitems[selected].on_select();
-
-    RenderFunc rf(uicontext, [&background,&header,&header_logo,&footer,&mainmenu_panel,
-        &menuitems,&cursor1,&cursor2,&selected](auto uicontext, bool focus) {
-        SDL_RenderCopy(uicontext, background.get(), NULL, NULL);
-        SDL_Rect header_rect = { 0, 0, std::get<1>(header), uicontext.header_height };
-        SDL_RenderCopy(uicontext, std::get<0>(header).get(), NULL, &header_rect);
-        SDL_Rect header_logo_rect = { 0, 0, std::get<1>(header_logo), std::get<2>(header_logo) };
-        SDL_RenderCopy(uicontext, std::get<0>(header_logo).get(), NULL, &header_logo_rect);
-        SDL_Rect footer_rect = { 0, uicontext.height - std::get<2>(footer), std::get<1>(footer), uicontext.footer_height };
-        SDL_RenderCopy(uicontext, std::get<0>(footer).get(), NULL, &footer_rect);
-        SDL_Rect mainmenu_panel_rect = { 0, header_rect.h, uicontext.mainmenu_width, std::get<2>(mainmenu_panel) };
-        SDL_RenderCopy(uicontext, std::get<0>(mainmenu_panel).get(), NULL, &mainmenu_panel_rect);
-
-        SDL_Rect rect = {0, uicontext.header_height, uicontext.mainmenu_width, uicontext.mainmenu_item_height};
-        for (auto i = menuitems.begin(); i != menuitems.end(); i++) {
-            rect.y = i->y;
-            if (selected == std::distance(menuitems.begin(), i)) {
-                auto cursor = (focus && i->on_enter)? cursor1.get() : cursor2.get();
-                if (focus) {
-                    Uint8 alpha = std::abs(std::sin((SDL_GetTicks() % 4000 * pi * 2 / 4000))) * 127 + 128;
-                    SDL_SetTextureAlphaMod(cursor, alpha);
-                }
-                SDL_RenderCopy(uicontext, cursor, NULL, &rect);
-            }
-            SDL_RenderCopy(uicontext, i->texture.get(), NULL, &rect);
-        }
-
-        return true;
-    });
-
-    while (true) {
-        uicontext.render();
-        menuitems[selected].draw();
-    
-        if (!process_event([&uicontext,&menuitems,&selected](auto ev) {
-            if (ev.type == SDL_KEYDOWN) {
-                if (ev.key.keysym.sym == SDLK_UP && selected > 0) {
-                    if (menuitems[selected].on_deselect) menuitems[selected].on_deselect();
-                    selected -= 1;
-                    if (menuitems[selected].on_select) menuitems[selected].on_select();
-                } else if (ev.key.keysym.sym == SDLK_DOWN && selected < menuitems.size() - 1) {
-                    if (menuitems[selected].on_deselect) menuitems[selected].on_deselect();
-                    selected += 1;
-                    if (menuitems[selected].on_select) menuitems[selected].on_select();
-                } else if ((ev.key.keysym.sym == SDLK_RETURN || ev.key.keysym.sym == SDLK_KP_ENTER) && menuitems[selected].on_enter) {
-                    if (!menuitems[selected].on_enter()) return false;
-                }
-            }
-            return true;
-        })) break;
-        SDL_RenderPresent(uicontext);
-    }
-}
-
-int ui(const char* tty = NULL, bool installer = false)
-{
-    std::fstream ftty (std::filesystem::path("/dev") / (tty? tty : "null"), std::ios::in | std::ios::out);
-    std::ostream& cout = (tty && ftty)? ftty : std::cout;
-    std::ostream& cerr = (tty && ftty)? ftty : std::cerr;
-
-    if (installer && geteuid() != 0) {
-        cout << "Warning: Running installer without root privilege." << std::endl;
-    }
-
-    const int width = 1024, height = 768;
-
-    std::filesystem::path theme_dir1("/usr/share/wb/themes/default");
-    std::filesystem::path theme_dir2("./default_theme");
-
-    const auto& theme_dir = std::filesystem::exists(theme_dir1)? theme_dir1 : theme_dir2;
-
-    // wait for graphics hardware drivers to be loaded(hopefully)
-    //cout << "Waiting for udev to be settled..." << std::endl;
-    system("udevadm settle");
-
-    int rst = 0;
-    std::optional<std::string> error_message;
-
-retry:;
-    try {
-        //cout << "Initializing SDL..." << std::endl;
-        if (SDL_Init(SDL_INIT_VIDEO) < 0) throw UnrecoverableSDLError("SDL_Init");
-        const char* videodriver = SDL_GetCurrentVideoDriver();
-        //bool wayland = videodriver? (strcmp(videodriver, "wayland") == 0): false;
-        //cout << "Initializing TTF subsystem..." << std::endl;
-        if (TTF_Init() < 0) throw TTFError();
-        //cout << "Creating Window..." << std::endl;
-        auto window = make_shared(SDL_CreateWindow("walbrix",SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-            width,height,SDL_WINDOW_SHOWN));
-        if (!window) throw UnrecoverableSDLError("SDL_CreateWindow");
-        //cout << "Creating Renderer..." << std::endl;
-        auto renderer = make_shared(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_PRESENTVSYNC));
-        if (!renderer) throw UnrecoverableSDLError("SDL_CreateRenderer");
-        if (SDL_RenderSetLogicalSize(renderer.get(), width, height) != 0) throw UnrecoverableSDLError("SDL_RenderSetLogicalSize");
-        UIContext uicontext(renderer, theme_dir, tty, installer);
-        //cout << "Invoking user interface..." << std::endl;
-        ui(uicontext);
-    }
-    catch (const UnrecoverableSDLError& e) {
-        std::string what = e.what();
-        if ((what == "SDL_Init"/* || what == "SDL_CreateWindow" || what == "SDL_CreateRenderer"*/) && tty) {
-            //rst = 114518;
-            sleep(3);
-            goto retry;
-        } else {
-            error_message = std::string(e.what()) + ": " + SDL_GetError();
-            rst = 1;
-        }
-    }
-    catch (const Terminated& e) {
-        rst = 1;
-    }
-    catch (const PerformShutdown& e) {
-        rst = 114514;
-        if (e.is_force()) rst++;
-    }
-    catch (const PerformReboot& e) {
-        rst = 114516;
-        if (e.is_force()) rst++;
-    }
-    catch (const TTFError& e) {
-        rst = 1;
-    }
-    catch (const std::exception& e) {
-        error_message = e.what();
-        rst = 1;
-    }
-
-    if (TTF_WasInit()) TTF_Quit();
-    SDL_Quit();
-
-    if (rst == 114514) {
-        if (geteuid() == 0) execl("/sbin/poweroff", "/sbin/poweroff", NULL);
-        else cout << "Shutdown performed" << std::endl;
-    } else if (rst == 114515) {
-        if (geteuid() == 0) execl("/sbin/poweroff", "/sbin/poweroff", "-f", NULL);
-        else cout << "Force shutdown performed" << std::endl;
-    } else if (rst == 114516) {
-        if (geteuid() == 0) execl("/sbin/reboot", "/sbin/reboot", NULL);
-        else cout << "Reboot performed" << std::endl;
-    } else if (rst == 114517) {
-        if (geteuid() == 0) execl("/sbin/reboot", "/sbin/reboot", "-f", NULL);
-        else cout << "Force reboot performed" << std::endl;
-    } else if (rst == 114518) {
-        cout << "Graphical interface has been disabled due to monitor disconnected during boot." << std::endl;
-        cout << "Press Ctrl-D to try getting it back." << std::endl;
-        fallback_to_agetty(tty);
-    }
-
-    if (error_message) {
-        cerr << error_message.value() << std::endl;
-        if (tty && ftty) {
-            cout << "Hit enter key" << std::endl;
-            ftty.get();
-        }
-    }
-
-    return rst;
-}
-
-static int login(const std::vector<std::string>& args)
+static int create(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
-    program.add_argument("tty").help("TTY name");
-    program.add_argument("--installer").help("Installer mode").default_value(false).implicit_value(true);
+    program.add_argument("--volume", "-v").help("Specify volume to create VM on").default_value(std::string("default"));
+    program.add_argument("vmname").help("VM name");
     try {
         program.parse_args(args);
     }
@@ -982,15 +325,131 @@ static int login(const std::vector<std::string>& args)
         std::cout << program;
         return 1;
     }
-    
-    auto tty = program.get<std::string>("tty");
 
-    return ui(tty.c_str(), program.get<bool>("--installer"));
+    auto vmname = program.get<std::string>("vmname");
+
+    auto vm_dir = vm_root / vmname;
+    if (std::filesystem::exists(vm_dir)) {
+        throw std::runtime_error(vmname + " already exists");
+    }
+
+    auto volume = program.get<std::string>("--volume");
+    auto volume_dir = get_volume_dir(volume, [](auto name) -> std::filesystem::path {throw std::runtime_error("Volume " + name + " does not exist");});
+    auto volume_vm_dir = volume_dir / vmname;
+    if (std::filesystem::exists(volume_vm_dir)) {
+        throw std::runtime_error(vmname + " already exists on volume " + volume);
+    }
+
+    try {
+        auto fs_dir = volume_vm_dir / "fs";
+        std::filesystem::create_directories(fs_dir);
+        check_call({"cp", "-a", "/usr/share/wb/stubvm/.", fs_dir.string()});
+
+        auto _home = getenv("HOME");
+        if (_home) {
+            std::filesystem::path home(_home);
+            auto src_ssh_dir = home / ".ssh";
+            auto dest_authorized_keys = fs_dir / ".stubroot" / "root" / ".ssh" / "authorized_keys";
+
+            auto append_file = [](const std::filesystem::path& src, const std::filesystem::path& dst) {
+                if (!std::filesystem::exists(src) || !std::filesystem::is_regular_file(src)) return false;
+                // else
+                std::ifstream in(src);
+                if (!in) return false;
+                // else
+                std::ofstream out(dst, std::ios_base::app);
+                if (!out) return false;
+                // else
+                std::string line;
+                while (std::getline(in, line)) {
+                    if (line != "") out << line << std::endl;
+                }
+                return true;
+            };
+
+            append_file(src_ssh_dir / "authorized_keys", dest_authorized_keys);
+            append_file(src_ssh_dir / "id_rsa.pub", dest_authorized_keys);
+        }
+        std::filesystem::create_directory_symlink(std::filesystem::path("@" + volume) / vmname, vm_dir);
+    }
+    catch (...) {
+        std::filesystem::remove_all(volume_vm_dir);
+        throw;
+    }
+
+    return 0;
+}
+
+static int _delete(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("vmname").help("VM name");
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    auto vmname = program.get<std::string>("vmname");
+    auto vm_dir = vm_root / vmname;
+
+    if (!std::filesystem::exists(vm_dir) || !std::filesystem::is_directory(vm_dir)) {
+        throw std::runtime_error(vmname + " does not exist");
+    }
+
+    if (!std::filesystem::is_symlink(vm_dir)) {
+        throw std::runtime_error(vmname + " cannot be deleted.  Delete " + vm_dir.string() + " manually.");
+    }
+
+    auto symlink = std::filesystem::read_symlink(vm_dir);
+
+    auto real_vm_dir = symlink.is_relative()? (vm_dir.parent_path() / std::filesystem::read_symlink(vm_dir)) : symlink;
+    auto volume_dir = real_vm_dir.parent_path();
+    auto volume_name = volume_dir.filename().string();
+    if (volume_name[0] != '@') throw std::runtime_error(volume_dir.string() + " is not a volume path");
+    volume_name.replace(volume_name.begin(), volume_name.begin() + 1, ""); // remove '@'
+    auto volume_dir_should_be = get_volume_dir(volume_name, [](auto name) -> std::filesystem::path {
+        throw std::runtime_error("Volume " + name + " does not exist");
+    });
+    if (volume_dir_should_be != volume_dir) {
+        throw std::runtime_error("Symlink " + vm_dir.string() + "(points " + real_vm_dir.string() + ") does not point VM dir right under volume");
+    }
+
+    if (is_running(vmname)) throw std::runtime_error(vmname + " is running");
+
+    set_autostart(vmname, false);
+    std::filesystem::remove(vm_dir);  // remove symlink
+    
+    // move vm real dir to trash
+    uuid_t uuid;
+    char uuid_str[37];
+    uuid_generate(uuid);
+    uuid_unparse_lower(uuid, uuid_str);
+    auto trash_dir = volume_dir / ".trash";
+    std::filesystem::create_directories(trash_dir);
+    std::filesystem::rename(real_vm_dir, trash_dir / (vmname + '.' + uuid_str));
+
+    return 0;
+}
+
+static int activate(const std::vector<std::string>& args)
+{
+    return 0;
+}
+
+static int deactivate(const std::vector<std::string>& args)
+{
+    return 0;
 }
 
 static const std::map<std::string,std::pair<int (*)(const std::vector<std::string>&),std::string> > subcommands {
   {"console", {console, "Enter VM console"}},
   {"monitor", {monitor, "Enter VM monitor"}},
+  {"create", {create, "Create new VM"}},
+  {"delete", {_delete, "Delete VM"}},
   {"start", {start, "Start VM"}},
   {"stop", {stop, "Stop VM"}},
   {"restart", {restart, "Restart VM"}},
@@ -1000,10 +459,11 @@ static const std::map<std::string,std::pair<int (*)(const std::vector<std::strin
   {"journal", {journal, "Show VM journal using 'journalctl'"}},
   {"autostart", {autostart, "Enable/Disable autostart"}},
   {"list", {list, "List VM"}},
-  {"login", {login, "Show title screen(executed by systemd)"}},
-  {"ui", {[](auto args){ return ui(); }, "Run graphical interface"}},
-  {"installer", {[](auto args){ return ui(NULL, true); }, "Run graphical installer"}},
-  {"install", {install_cmdline, "Run command line installer"}}
+  {"login", {gtk4login, "Show title screen(executed by systemd)"}},
+  {"ui", {gtk4ui,  "Run graphical interface"}},
+  {"installer", {gtk4installer, "Run graphical installer"}},
+  {"install", {install_cmdline, "Run command line installer"}},
+  {"volume", {volume, "Manage volumes"}}
 };
 
 static void show_subcommands()

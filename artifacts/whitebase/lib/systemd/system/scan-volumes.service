@@ -1,0 +1,11 @@
+[Unit]
+Description=Scan Volumes
+Requires=local-fs.target
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/wb volume scan
+
+[Install]
+WantedBy=multi-user.target

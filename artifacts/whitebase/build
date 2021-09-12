@@ -15,7 +15,7 @@ touch /usr/sbin/do-with-lvm-snapshot
 touch /usr/sbin/rpmbootstrap
 touch /usr/sbin/genbootstrap
 
-g++ -std=c++2a -o /usr/sbin/wait-for-display /usr/src/wait-for-display.cpp -lwayland-client
+#g++ -std=c++2a -o /usr/sbin/wait-for-display /usr/src/wait-for-display.cpp -lwayland-client
 
 #/etc/udev/hwdb.bin
 #/usr/bin/cpuid2cpuflags
@@ -28,7 +28,29 @@ cd /usr/src/walbrix
 make
 make install
 
+# setup stubvm
+# llmnrd
+mkdir -p /usr/share/wb/stubvm/.stubroot/sbin /tmp/llmnrd
+download https://github.com/tklauser/llmnrd/archive/refs/tags/v0.7.tar.gz > /usr/share/wb/stubvm/.stubroot/sbin/llmnrd.src.tar.gz
+tar xf /usr/share/wb/stubvm/.stubroot/sbin/llmnrd.src.tar.gz --strip-components=1 -C /tmp/llmnrd
+cd /tmp/llmnrd
+gcc -static -o /usr/share/wb/stubvm/.stubroot/sbin/llmnrd -DVERSION_STRING="\"v`egrep '^VERSION = ' Makefile | sed 's/.*= //'`\"" -DGIT_VERSION='""' -DPIDFILE='"/run/llmnrd.pid"' llmnr.c iface.c socket.c util.c log.c llmnrd.c
+
+# dropbear, qemu-ga, nss
+LIBDIR=/lib64
+if [ ! -d /lib64 ]; then
+	LIBDIR=/lib
+fi
+
+lddtree -l /usr/sbin/dropbear /usr/bin/qemu-ga /usr/bin/strace /usr/bin/perl $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
+echo -e '/bin/busybox\n/sbin/ldconfig\n/usr/share/udhcpc/default.script' >> /tmp/stubroot-files
+rsync -L --files-from=/tmp/stubroot-files / /usr/share/wb/stubvm/.stubroot
+
+# debootstrap
+mkdir -p /usr/share/wb/stubvm/.stubroot/usr/sbin /usr/share/wb/stubvm/.stubroot/usr/share
+cp -a /usr/sbin/debootstrap /usr/share/wb/stubvm/.stubroot/usr/sbin/
+cp -a /usr/share/debootstrap /usr/share/wb/stubvm/.stubroot/usr/share/
+
 mkdir -p /var/vm/\@default
 
-systemctl enable mdmonitor ui
-
+systemctl enable scan-volumes

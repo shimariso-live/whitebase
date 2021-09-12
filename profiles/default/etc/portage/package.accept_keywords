@@ -18,8 +18,18 @@ dev-cpp/pstreams
 dev-cpp/argparse
 media-libs/mesa
 x11-libs/libdrm
+media-libs/libepoxy # for https://github.com/anholt/libepoxy/pull/238/commits/dbfa4b209c0712b67dfeb8366c2ebe8503063b52
+
+=dev-cpp/gtkmm-4.2.0
+=dev-cpp/glibmm-2.68.1
+=dev-cpp/cairomm-1.16.1
+=dev-cpp/pangomm-2.48.1
+=dev-libs/libsigc++-3.0.7
 
 # rescue
 app-crypt/gcr
 media-libs/libglvnd
 net-misc/eventd
+
+# for autolaunch
+=dev-libs/weston-9999 **

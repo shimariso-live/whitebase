@@ -1,10 +1,11 @@
 [Unit]
 Description=Virtual Machine for %I
-Requires=local-fs.target
-After=local-fs.target
+Requires=scan-volumes.service
+After=scan-volumes.service
 
 [Service]
 Type=notify
+ConditionDirectoryNotEmpty=/var/vm/%I
 ExecStart=/usr/sbin/vm %i
 KillMode=mixed
 TimeoutStopSec=180

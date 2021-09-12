@@ -1,5 +1,5 @@
 {
 	"compression":"xz",
-	"packages":["@all","@genpack-install"],
+	"packages":["@walbrix","@genpack-install","@debug"],
 	"services":["cronie","rngd"]
 }

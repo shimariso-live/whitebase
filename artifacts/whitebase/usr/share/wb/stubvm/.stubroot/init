@@ -1,0 +1,30 @@
+#!/bin/busybox sh
+mkdir -p /etc /dev /proc /sys /run /var/log
+touch /var/log/lastlog
+mount -t proc -o noexec,nosuid,nodev proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs udev /dev
+mkdir /dev/pts
+mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
+
+active_console=ttyS0
+exec 0<>/dev/${active_console} 1<>/dev/${active_console} 2<>/dev/${active_console}
+
+busybox --install -s /bin
+
+hostname `sed 's/\s\+/\n/g' /proc/cmdline | egrep '^systemd.hostname=' | sed 's/^.*=//'`
+
+ifconfig lo up
+ifconfig eth0 up
+udhcpc -i eth0 -b
+
+touch /etc/fstab
+
+acpid
+/sbin/llmnrd -i eth0 -6 -d
+mkdir -p /etc/dropbear
+dropbear -R
+qemu-ga -p /dev/vport0p1 -d
+
+exec init

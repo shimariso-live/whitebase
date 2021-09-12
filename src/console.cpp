@@ -11,9 +11,6 @@
 #include <sys/ioctl.h>
 #include <argparse/argparse.hpp>
 
-#include "terminal.h"
-#include "walbrixd.h"
-
 static struct termios old_term;
 
 void restore_term()
@@ -43,28 +40,9 @@ int connect(const char* vmname, const std::string& socket_name = "serial.sock")
     return sock;
 }
 
-int send_window_size(int fd, unsigned short rows, unsigned short cols)
-{
-    uint8_t cmd_window_size[] {
-        0xff/*IAC*/, 0xfa/*SB*/, 0x1f/*window_size*/, 
-        (uint8_t)(cols >> 8), (uint8_t)(cols & 0xff)/*cols*/, 
-        (uint8_t)(rows >> 8), (uint8_t)(rows & 0xff)/*rows*/
-    };
-
-    return write(fd, cmd_window_size, sizeof(cmd_window_size));
-}
-
 int console(const char* vmname, const std::string& socket_name)
 {
     int sock = connect(vmname, socket_name);
-
-    /*
-    // send window size
-    struct winsize winsz;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &winsz) >= 0) {
-        send_window_size(sock, winsz.ws_row, winsz.ws_col);
-    }
-    */
 
     // init terminal
     if (tcgetattr(STDIN_FILENO, &old_term) >= 0) {
@@ -119,67 +97,6 @@ int console(const char* vmname)
     return console(vmname, "serial.sock");
 }
 
-int console_graphical(const char* vmname)
-{
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << SDL_GetError() << std::endl;
-    	return 1;
-    }
-    if (TTF_Init() < 0) {
-        std::cerr << "TTF_Init: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-    TTF_Font* font = TTF_OpenFont("/usr/share/fonts/vlgothic/VL-Gothic-Regular.ttf", 48);
-    if (font == NULL) {
-        std::cerr << "TTF_OpenFont: " << TTF_GetError() << std::endl;
-        return 1;
-    }
-    SDL_ShowCursor(SDL_DISABLE);
-    SDL_Window* window = SDL_CreateWindow("term",SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,1024,768,SDL_WINDOW_SHOWN);
-    if (window == NULL) {
-        std::cerr << "SDL_CreateWindow: " << SDL_GetError() << std::endl;
-    	return 1;
-    }
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
-    if (renderer == NULL) {
-        std::cerr << "SDL_CreateRenderer: " << SDL_GetError() << std::endl;
-    	return 1;
-    }
-
-    int sock = connect(vmname);
-
-    const int rows = 24, cols = 80;
-    send_window_size(sock, rows, cols);
-
-    Terminal terminal(sock, rows, cols, font);
-
-    while (true) {
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255 );
-        SDL_RenderClear(renderer);
-        SDL_Event ev;
-        while(SDL_PollEvent(&ev)) {
-            if (ev.type == SDL_QUIT || (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_RIGHTBRACKET && (ev.key.keysym.mod & KMOD_CTRL))) {
-                goto out;
-            } else {
-                terminal.processEvent(ev);
-            }
-        }
-
-        if (!terminal.processInput()) break; // EOF detected
-
-        SDL_Rect rect = { 0, 0, 1024, 768 };
-        terminal.render(renderer, rect);
-        SDL_RenderPresent(renderer);
-    }
-
-out:;
-    close(sock);
-
-    TTF_Quit();
-    SDL_Quit();
-    return 0;
-}
-
 int monitor(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
@@ -215,8 +132,7 @@ int console(const std::vector<std::string>& args)
 
     auto graphical = program.get<bool>("--graphical"); 
     auto vmname = program.get<std::string>("vmname");
-    return graphical? console_graphical(vmname.c_str()) 
-     : console(vmname.c_str());
+    return console(vmname.c_str());
 }
 
 static int _main(int,char*[])
@@ -227,4 +143,3 @@ static int _main(int,char*[])
 #ifdef __MAIN_MODULE__
 int main(int argc, char* argv[]) { return _main(argc, argv); }
 #endif
-

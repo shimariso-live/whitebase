@@ -1,13 +1,13 @@
 [Unit]
 Description=Weston
 Conflicts=getty@tty1.service
-Before=ui.service
-#After=systemd-user-sessions.service getty@tty1.service plymouth-quit.service systemd-logind.service
+ConditionPathExistsGlob=/dev/dri/card*
 
 [Service]
 Type=notify
 ExecStart=/usr/sbin/start-display-manager
 Restart=always
+RestartSec=1
 
 [Install]
 WantedBy=graphical.target

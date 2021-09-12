@@ -3,9 +3,11 @@
 
 #include <string.h>
 #include <unistd.h>
+#include <grp.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 
 #include "common.h"
 
@@ -25,6 +27,28 @@ pid_t fork(std::function<void(void)> func)
     auto pid = fork();
     if (pid < 0) throw std::runtime_error("fork() failed");
     if (pid > 0) return pid;
+
+    //else(child process)
+    try {
+        func();
+    }
+    catch (...) {
+        // jumping across scope border in forked process may not be a good idea.
+    }
+    _exit(-1);
+}
+
+std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<std::pair<unsigned short,unsigned short>>& winsiz/* = std::nullopt*/)
+{
+    int fd;
+    struct winsize win = { (unsigned short)25, (unsigned short)80, 0, 0 };
+    if (winsiz.has_value()) {
+        win.ws_col = winsiz.value().first;
+        win.ws_row = winsiz.value().second;
+    }
+    auto pid = forkpty(&fd, NULL, NULL, &win);
+    if (pid < 0) throw std::runtime_error("forkpty() failed");
+    if (pid > 0) return {pid, fd};
 
     //else(child process)
     try {
@@ -70,6 +94,11 @@ int listen_unix_socket(const std::filesystem::path& socket_path, int backlog/*=1
     if (bind(sock, (const struct sockaddr*)&sockaddr, sizeof(sockaddr)) < 0) {
         throw std::runtime_error("bind(" + socket_path.string() + ") failed");
     }
+
+    if (chmod(socket_path.c_str(), S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP) < 0) throw std::runtime_error("chmod(" + socket_path.string() + ") failed");
+    struct group* g = getgrnam("wheel");
+    if (g) chown(socket_path.c_str(), geteuid(), g->gr_gid);
+
     if (listen(sock, backlog) < 0) throw std::runtime_error("listen(" + socket_path.string() + ") failed");
     //else
     return sock;
@@ -97,21 +126,10 @@ int connect_unix_socket(const std::filesystem::path& socket_path)
 
 void with_socket(const std::filesystem::path& socket_path,std::function<void(int)> func)
 {
-    auto fd = connect_unix_socket(socket_path);
-    try {
+    with_socket<void*>(socket_path, [&func](int fd) {
         func(fd);
-    }
-    catch (...) {
-        close(fd);
-        throw;
-    }
-    shutdown(fd, SHUT_WR);
-    char buf[128];
-    int r;
-    while (r = read(fd, buf, sizeof(buf)) > 0) {
-        ;
-    }
-    close(fd);
+        return nullptr;
+    });
 }
 
 bool read_json_object_stream(int fd, std::string& buf, std::function<bool(const yajl_val)> func)
@@ -162,4 +180,44 @@ bool with_object_property(const yajl_val val, const std::string& name, std::func
         auto rst = func(val);
         return rst? std::optional<bool>(true) : std::nullopt;
     }).value_or(false);
+}
+
+void with_finally_clause(std::function<void(void)> func,std::function<void(void)> finally)
+{
+    with_finally_clause<void*>([&func]() {
+        func();
+        return nullptr;
+    }, finally);
+}
+
+int write(int fd, const std::string& str)
+{
+    return ::write(fd, str.c_str(), str.length());
+}
+
+std::string human_readable(uint64_t size)
+{
+    char buf[32];
+    char au = 'K';
+
+    float s = size / 1024.0;
+    
+    if (s >= 1024.0) {
+        s /= 1024.0;
+        au = 'M';
+    }
+    if (s >= 1024.0) {
+        s /= 1024.0;
+        au = 'G';
+    }
+    if (s >= 1024.0) {
+        s /= 1024.0;
+        au = 'T';
+    }
+    if (s >= 1024.0) {
+        s /= 1024.0;
+        au = 'P';
+    }
+    sprintf(buf, "%.1f%c", s, au);
+    return std::string(buf);
 }

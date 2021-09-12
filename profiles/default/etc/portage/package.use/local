@@ -1,13 +1,15 @@
 sys-devel/binutils multitarget
-sys-boot/grub device-mapper grub_platforms_efi-64 grub_platforms_pc grub_platforms_xen grub_platforms_xen-pvh
+sys-boot/grub device-mapper grub_platforms_efi-64 grub_platforms_pc #grub_platforms_xen grub_platforms_xen-pvh
 sys-auth/pambase -passwdqc
 
 sys-kernel/gentoo-sources symlink
 
 # to force rebuild systemd
-sys-apps/systemd -acl
+sys-apps/systemd -acl static-libs
 
 sys-apps/util-linux static-libs -python
+virtual/libudev static-libs
+
 app-editors/vim minimal -python
 
 net-vpn/openvpn threads inotify iproute2 lz4
@@ -29,22 +31,26 @@ sys-fs/lvm2 -readline systemd -thin udev
 net-misc/rsync xxhash
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
-app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png xen vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb
+app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen
 
 # xen
 app-emulation/xen efi
-app-emulation/xen-tools api pygrub xend hvm -qemu system-qemu -ocaml python -ovmf
-sys-apps/kexec-tools lzma xen
-sys-cluster/drbd-utils xen
+app-emulation/xen-tools -api -pygrub -xend -hvm -qemu -system-qemu -ocaml -python -ovmf -rombios -ipxe -pam -qemu-traditional
+sys-apps/kexec-tools lzma
+#sys-cluster/drbd-utils xen
 
 # xen's qemu
-x11-libs/gtk+ X wayland
-x11-libs/cairo X
-media-libs/libglvnd X
+#x11-libs/gtk+ X wayland
+x11-libs/cairo -X
+#media-libs/libglvnd X
 
 # wbui
-dev-libs/weston -X desktop headless launch -rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp fbdev
-media-libs/mesa X wayland classic dri3 egl gallium gles1 gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
+media-libs/freetype harfbuzz
+gui-libs/gtk -X -introspection -broadway -cloudprint -colord -cups -examples -gstreamer -gtk-doc -sysprof -test wayland -xinerama
+media-libs/libepoxy -X
+dev-libs/weston -X desktop headless launch rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp -fbdev
+net-misc/freerdp -ffmpeg
+media-libs/mesa -X wayland classic dri3 egl gallium gles1 gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
 x11-libs/libdrm video_cards_vmware
 media-libs/libsdl2 -X gles1 gles2 alsa wayland cpu_flags_x86_3dnow
 media-libs/sdl2-image jpeg png webp
@@ -58,6 +64,7 @@ net-analyzer/net-snmp -python
 net-dns/avahi -introspection dbus
 net-wireless/wpa_supplicant dbus
 net-dns/dnsmasq dhcp-tools script
+net-misc/dropbear -pam -shadow -syslog -zlib minimal
 
 # misc
 media-sound/mpg123 alsa
