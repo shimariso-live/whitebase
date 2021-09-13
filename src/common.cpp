@@ -60,9 +60,20 @@ std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<
     _exit(-1);
 }
 
-int call(const std::vector<std::string>& cmdline)
+static pid_t pid_to_propagate_sigterm;
+
+int call(const std::vector<std::string>& cmdline, bool propagate_sigterm/*=false*/)
 {
     auto pid = fork([&cmdline](){exec(cmdline);});
+
+    if (propagate_sigterm) {
+        pid_to_propagate_sigterm = pid;
+        struct sigaction act;
+        memset(&act, 0, sizeof(act));
+        act.sa_handler = [](int){ kill(pid_to_propagate_sigterm, SIGTERM); wait(NULL); exit(-1); };
+        sigaction(SIGTERM, &act, NULL);
+    }
+
     int wstatus;
     if (waitpid(pid, &wstatus, 0) < 0) throw std::runtime_error("waitpid() failed");
     if (!WIFEXITED(wstatus)) {

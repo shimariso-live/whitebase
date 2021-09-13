@@ -14,7 +14,7 @@
 void exec(const std::vector<std::string>& cmdline);
 pid_t fork(std::function<void(void)> func);
 std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<std::pair<unsigned short,unsigned short>>& winsiz = std::nullopt);
-int call(const std::vector<std::string>& cmdline);
+int call(const std::vector<std::string>& cmdline, bool propagate_sigterm = false/*DO NOT USE THIS OPTION UNLESS YOU ARE AWARE OF WHAT YOU DOING*/);
 void check_call(const std::vector<std::string>& cmdline);
 int listen_unix_socket(const std::filesystem::path& socket_path, int backlog = 10);
 int connect_unix_socket(const std::filesystem::path& socket_path);

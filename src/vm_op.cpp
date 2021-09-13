@@ -1,10 +1,48 @@
-#include <iostream>
-#include <libsmartcols/libsmartcols.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/file.h>
 
-#include "common.h"
-#include "wb.h"
-#include "list.h"
+#include <iostream>
+#include <filesystem>
+
+#include <uuid/uuid.h>
+
 #include "volume.h"
+#include "vm_op.h"
+
+bool is_running(const std::string& vmname)
+{
+    auto run_vm = run_root / vmname;
+    auto serial_sock = run_vm / "serial.sock";
+    if (!std::filesystem::exists(serial_sock) || !std::filesystem::is_socket(serial_sock)) return false;
+    auto fd = open(run_vm.c_str(), O_RDONLY, 0);
+    if (fd < 0) return false;
+    bool running = (flock(fd, LOCK_EX|LOCK_NB) < 0 && errno == EWOULDBLOCK);
+    close(fd);
+    return running;
+}
+
+bool is_autostart(const std::string& vmname)
+{
+    std::filesystem::path multi_user_target_wants("/etc/systemd/system/multi-user.target.wants");
+    return std::filesystem::exists(multi_user_target_wants / (std::string("vm@") + vmname + ".service"));
+}
+
+void set_autostart(const std::string& vmname, bool autostart)
+{
+    check_call({"systemctl", autostart? "enable" : "disable", std::string("vm@") + vmname});
+}
+
+void for_each_running_vm(std::function<void(const std::string&)> func)
+{
+    if (!std::filesystem::exists(run_root) || !std::filesystem::is_directory(run_root)) return;
+    //else
+    for (const auto& d : std::filesystem::directory_iterator(run_root)) {
+        auto name = d.path().filename().string();
+        if (!is_running(name)) continue;
+        func(name);
+    }
+}
 
 static std::optional<std::string> get_volume_name_from_vm_name(const std::string& vmname)
 {
@@ -25,7 +63,7 @@ static std::optional<std::string> get_volume_name_from_vm_name(const std::string
     return (volume_dir_should_be == volume_dir)? std::make_optional(volume_name) : std::nullopt;
 }
 
-std::map<std::string,VM> list()
+std::map<std::string,VM> list_vm()
 {
     std::map<std::string,VM> vms;
 
@@ -39,6 +77,7 @@ std::map<std::string,VM> list()
             VM vm;
             // todo: read ini
             vm.volume = get_volume_name_from_vm_name(name);
+            vm.autostart = is_autostart(name);
             vms[name] = vm;
         }
     }
@@ -135,43 +174,44 @@ std::map<std::string,VM> list()
     return vms;
 }
 
-int list(const std::vector<std::string>& args)
+int delete_vm(const std::string& vmname)
 {
-    auto vms = list();
-
-    std::shared_ptr<libscols_table> table(scols_new_table(), scols_unref_table);
-    if (!table) throw std::runtime_error("scols_new_table() failed");
-    scols_table_new_column(table.get(), "RUNNING", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "NAME", 0.1, 0);
-    scols_table_new_column(table.get(), "VOLUME", 0.1, 0);
-    scols_table_new_column(table.get(), "AUTOSTART", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "CPU", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "MEMORY", 0.1, SCOLS_FL_RIGHT);
-    scols_table_new_column(table.get(), "IP ADDRESS", 0.1, SCOLS_FL_RIGHT);
-    auto sep = scols_table_new_line(table.get(), NULL);
-    scols_line_set_data(sep, 0, "-------");
-    scols_line_set_data(sep, 1, "--------");
-    scols_line_set_data(sep, 2, "---------");
-    scols_line_set_data(sep, 3, "---------");
-    scols_line_set_data(sep, 4, "---");
-    scols_line_set_data(sep, 5, "-------");
-    scols_line_set_data(sep, 6, "---------------");
-
-    for (const auto& i:vms) {
-        auto line = scols_table_new_line(table.get(), NULL);
-        if (!line) throw std::runtime_error("scols_table_new_line() failed");
-        scols_line_set_data(line, 0, i.second.running? "*" : "");
-        scols_line_set_data(line, 1, i.first.c_str());
-        scols_line_set_data(line, 2, i.second.volume.value_or("-").c_str());
-        scols_line_set_data(line, 3, is_autostart(i.first)? "yes":"no");
-        const auto& cpu = i.second.cpu;
-        scols_line_set_data(line, 4, cpu.has_value()? std::to_string(cpu.value()).c_str() : "-");
-        const auto& memory = i.second.memory;
-        scols_line_set_data(line, 5, memory.has_value()? std::to_string(memory.value()).c_str() : "-");
-        const auto& ip_address = i.second.ip_address;
-        scols_line_set_data(line, 6, ip_address.value_or("-").c_str());
+    auto vm_dir = vm_root / vmname;
+    if (!std::filesystem::exists(vm_dir) || !std::filesystem::is_directory(vm_dir)) {
+        throw std::runtime_error(vmname + " does not exist");
     }
-    scols_print_table(table.get());
+
+    if (!std::filesystem::is_symlink(vm_dir)) {
+        throw std::runtime_error(vmname + " cannot be deleted.  Delete " + vm_dir.string() + " manually.");
+    }
+
+    auto symlink = std::filesystem::read_symlink(vm_dir);
+
+    auto real_vm_dir = symlink.is_relative()? (vm_dir.parent_path() / std::filesystem::read_symlink(vm_dir)) : symlink;
+    auto volume_dir = real_vm_dir.parent_path();
+    auto volume_name = volume_dir.filename().string();
+    if (volume_name[0] != '@') throw std::runtime_error(volume_dir.string() + " is not a volume path");
+    volume_name.replace(volume_name.begin(), volume_name.begin() + 1, ""); // remove '@'
+    auto volume_dir_should_be = get_volume_dir(volume_name, [](auto name) -> std::filesystem::path {
+        throw std::runtime_error("Volume " + name + " does not exist");
+    });
+    if (volume_dir_should_be != volume_dir) {
+        throw std::runtime_error("Symlink " + vm_dir.string() + "(points " + real_vm_dir.string() + ") does not point VM dir right under volume");
+    }
+
+    if (is_running(vmname)) throw std::runtime_error(vmname + " is running");
+
+    set_autostart(vmname, false);
+    std::filesystem::remove(vm_dir);  // remove symlink
+    
+    // move vm real dir to trash
+    uuid_t uuid;
+    char uuid_str[37];
+    uuid_generate(uuid);
+    uuid_unparse_lower(uuid, uuid_str);
+    auto trash_dir = volume_dir / ".trash";
+    std::filesystem::create_directories(trash_dir);
+    std::filesystem::rename(real_vm_dir, trash_dir / (vmname + '.' + uuid_str));
 
     return 0;
 }

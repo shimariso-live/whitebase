@@ -13,12 +13,13 @@
 #include <glibmm.h>
 #include <wayland-client.h>
 
-#include "common.h"
 #include "terminal.h"
 #include "volume.h"
 #include "gtk4ui.h"
 #include "auth.h"
-#include "list.h"
+#include "subprocess.h"
+#include "vm_op.h"
+#include "console.h"
 
 static const int WINDOW_WIDTH = 1024;
 static const int WINDOW_HEIGHT = 768;
@@ -205,18 +206,34 @@ public:
     }
 };
 
-class VMPage : public Gtk::Stack {
-    Gtk::Box box, buttons_box;
+class VMPage : public Gtk::Notebook {
+    Gtk::Window& parent;
+
+    Gtk::Stack list_and_operate, create_new;
+    Gtk::Box box, buttons_box, console_box;
+    Gtk::Label console_label;
     Gtk::TreeView treeview;
+    Terminal console_terminal;
     Gtk::Button reload, start, stop, force_stop, console, _delete, rename, create;
 
     Glib::RefPtr<Gtk::ListStore> vm_liststore;
 
+    std::unique_ptr<SubprocessDialog> subprocess_dialog;
+    std::unique_ptr<Gtk::MessageDialog> message_dialog;
+    std::unique_ptr<Gtk::MessageDialog> confirmation_dialog;
+
+    pid_t console_pid;
+    int console_fd;
+    std::optional<std::string> console_vmname;
+    std::optional<sigc::connection> io_signal;
+    std::optional<std::pair<int,int>> terminal_size;
+
     class Columns : public Gtk::TreeModelColumnRecord {
     public:
-        Columns() { add(running); add(name); add(volume); add(cpu); add(memory); add(ip_address); }
+        Columns() { add(running); add(autostart); add(name); add(volume); add(cpu); add(memory); add(ip_address); }
 
         Gtk::TreeModelColumn<bool> running;
+        Gtk::TreeModelColumn<bool> autostart;
         Gtk::TreeModelColumn<std::string> name;
         Gtk::TreeModelColumn<std::string> volume;
         Gtk::TreeModelColumn<std::string> cpu;
@@ -225,14 +242,21 @@ class VMPage : public Gtk::Stack {
     } columns;
 
 public:
-    VMPage() : box(Gtk::Orientation::VERTICAL) , buttons_box(Gtk::Orientation::HORIZONTAL),
+    VMPage(Gtk::Window& _parent) : parent(_parent), 
+        console_pid(0), console_fd(-1),
+        box(Gtk::Orientation::VERTICAL) , buttons_box(Gtk::Orientation::HORIZONTAL), console_box(Gtk::Orientation::VERTICAL),
+        console_label("コンソールから抜けるには Ctrl+] を押してください"),
         reload("最新の情報に更新(Alt+_R)", true), 
-        start("開始(Alt+_T)", true), stop("停止(Alt+P)", true), force_stop("強制停止(Alt+K)", true), console("コンソール(Alt+C)", true) {
+        start("開始(Alt+_T)", true), stop("停止(Alt+_P)", true), force_stop("強制停止(Alt+_K)", true), console("コンソール(Alt+_C)", true),
+        _delete("削除(Alt+_D)", true) {
+
+        // setup list and operate page
         treeview.set_expand();
         vm_liststore = Gtk::ListStore::create(columns);
         treeview.set_model(vm_liststore);
 
         treeview.append_column("稼働", columns.running);
+        treeview.append_column("自動起動", columns.autostart);
         treeview.append_column("名前", columns.name);
         treeview.append_column("領域", columns.volume);
         treeview.append_column("CPUコア数", columns.cpu);
@@ -246,28 +270,34 @@ public:
         buttons_box.append(stop);
         buttons_box.append(force_stop);
         buttons_box.append(console);
+        buttons_box.append(_delete);
         box.append(buttons_box);
-        add(box);
+        list_and_operate.add(box, "listview");
+
+        // setup console page
+        console_box.append(console_label);
+        console_terminal.set_expand();
+        console_box.append(console_terminal);
+        list_and_operate.add(console_box, "console");
+
+        append_page(list_and_operate, "一覧と操作");
+
+        // TODO: setup create page
+        append_page(create_new, "新規作成", "new");
 
         reload.signal_clicked().connect([this]() {do_reload();});
 
-        treeview.signal_cursor_changed().connect([this](){
-            auto selected_rows = treeview.get_selection()->get_selected();
-            if (!selected_rows) return;
-            if (selected_rows->get_value(columns.running)) {
-                start.set_sensitive(false);
-                stop.set_sensitive(true);
-                force_stop.set_sensitive(true);
-                console.set_sensitive(true);
-            } else {
-                start.set_sensitive(true);
-                stop.set_sensitive(false);
-                force_stop.set_sensitive(false);
-                console.set_sensitive(false);
-            }
-        });
+        treeview.signal_cursor_changed().connect([this](){ on_cursor_change(); });
 
         do_reload();
+    }
+
+    ~VMPage() {
+        if (io_signal) io_signal->disconnect();
+        console_terminal.disconnect(); 
+        if (console_fd >= 0) close(console_fd);
+        if (console_pid > 0) kill(console_pid, SIGTERM);
+        waitpid(console_pid, NULL, 0);
     }
 
     void do_reload() {
@@ -275,8 +305,9 @@ public:
         stop.set_sensitive(false);
         force_stop.set_sensitive(false);
         console.set_sensitive(false);
+        _delete.set_sensitive(false);
         treeview.get_selection()->unselect_all();
-        auto vms = list();
+        auto vms = list_vm();
         auto get_or_append = [this](const std::string& name) {
             auto i = vm_liststore->get_iter("0");
             while (i) {
@@ -290,6 +321,7 @@ public:
             auto row = get_or_append(i.first);
             row->set_value(columns.name, i.first);
             row->set_value(columns.running, i.second.running);
+            row->set_value(columns.autostart, i.second.autostart);
             row->set_value(columns.volume, i.second.volume.value_or("-"));
             row->set_value(columns.cpu, i.second.cpu? std::to_string(i.second.cpu.value()) : std::string("-"));
             row->set_value(columns.memory, i.second.memory? std::to_string(i.second.memory.value()) + "MB" : std::string("-"));
@@ -305,6 +337,224 @@ public:
                 i++;
             }
         }
+
+        if (vms.size() == 0) set_current_page(1);
+    }
+
+    void fork_console_subprocess(int cols, int rows, const std::string& name)
+    {
+        auto console = forkpty([name]() {
+            setenv("TERM", "xterm-256color", 1);
+            std::cout << "\033[H\033[2J" << std::flush;
+            ::console(name);
+        }, std::make_optional(std::make_pair(cols, rows)));
+        console_pid = console.first;
+        console_fd = console.second;
+        console_terminal.connect(console_fd);
+        write(console_fd, "\n", 1); // to get login pronpt
+
+        if (io_signal) io_signal->disconnect();
+        io_signal = Glib::signal_io().connect([this](Glib::IOCondition cond){
+            char buf[1024];
+            int size = 0;
+            if ((int)(cond & Glib::IOCondition::IO_IN) > 0) {
+                size = read(console_fd, buf, sizeof(buf));
+            }
+            if (size == 0) {
+                console_terminal.disconnect();
+                close(console_fd);
+                console_fd = -1;
+                waitpid(console_pid, NULL, 0);
+                console_pid = 0;
+                console_vmname = std::nullopt;
+                list_and_operate.set_visible_child("listview");
+                return false;
+            }
+            //else
+            console_terminal.process_input(buf, size);
+            return true;
+        }, console_fd, Glib::IOCondition::IO_IN | Glib::IOCondition::IO_HUP);
+    }
+
+    virtual void on_realize() {
+        Gtk::Notebook::on_realize();
+
+        start.signal_clicked().connect([this]() { on_click_start(); });
+        stop.signal_clicked().connect([this]() { on_click_stop(); });
+        force_stop.signal_clicked().connect([this]() { on_click_force_stop(); });
+        console.signal_clicked().connect([this]() { on_click_console(); });
+        _delete.signal_clicked().connect([this]() { on_click_delete(); });
+
+        console_terminal.signal_open_terminal().connect([this]() {
+            if (console_vmname) fork_console_subprocess(terminal_size->first, terminal_size->second, console_vmname.value());
+        });
+        console_terminal.signal_resize_terminal().connect([this](int cols, int rows) {
+            terminal_size = {cols, rows};
+        });
+    }
+
+    std::optional<std::string> get_selected_vm_name() {
+        auto i = treeview.get_selection()->get_selected();
+        return i? std::make_optional(i->get_value(columns.name)) : std::nullopt;
+    }
+
+    void on_cursor_change() {
+        auto selected_rows = treeview.get_selection()->get_selected();
+        if (!selected_rows) return;
+        if (selected_rows->get_value(columns.running)) {
+            start.set_sensitive(false);
+            stop.set_sensitive(true);
+            force_stop.set_sensitive(true);
+            console.set_sensitive(true);
+            _delete.set_sensitive(false);
+        } else {
+            start.set_sensitive(true);
+            stop.set_sensitive(false);
+            force_stop.set_sensitive(false);
+            console.set_sensitive(false);
+            _delete.set_sensitive(true);
+        }
+    }
+
+    void on_click_start() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        subprocess_dialog.reset(new SubprocessDialog(parent, "開始", false, true));
+        subprocess_dialog->run([name]() {
+            auto rst = call({"systemctl", "start", std::string("vm@") + name});
+            if (rst == 0 && !is_running(name)) rst = 1;
+            return rst;
+        }, [](int in, int out, auto set_status_string, auto set_progress) {
+            set_progress(-1);
+            set_status_string("処理中...");
+            char c;
+            while (int i = read(in, &c, 1) > 0) {;}
+        });
+
+        subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
+            std::pair<std::string, Gtk::MessageType> message_type = 
+                (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
+                    std::make_pair(name + "を開始しました", Gtk::MessageType::INFO) : std::make_pair(name + "を開始できませんでした", Gtk::MessageType::ERROR);
+            message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
+            message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
+            message_dialog->show();
+        });
+    }
+
+    void on_click_stop() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を停止します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
+        confirmation_dialog->signal_response().connect([this,name](int res) {
+            if (res == Gtk::ResponseType::OK) {
+                subprocess_dialog.reset(new SubprocessDialog(parent, "停止", false, true));
+                subprocess_dialog->run([name]() {
+                    return call({"systemctl", "stop", std::string("vm@") + name}, true);
+                }, [](int in, int out, auto set_status_string, auto set_progress) {
+                    set_progress(-1);
+                    set_status_string("処理中...");
+                    char c;
+                    while (int i = read(in, &c, 1) > 0) {;}
+                });
+
+                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
+                    std::pair<std::string, Gtk::MessageType> message_type = 
+                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
+                            std::make_pair(name + "を停止しました", Gtk::MessageType::INFO) : std::make_pair(name + "を停止できませんでした", Gtk::MessageType::ERROR);
+                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
+                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
+                    message_dialog->show();
+                });
+            }
+            confirmation_dialog->hide();
+        });
+        confirmation_dialog->show();
+    }
+
+    void on_click_force_stop() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を強制停止します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
+        confirmation_dialog->signal_response().connect([this,name](int res) {
+            if (res == Gtk::ResponseType::OK) {
+                subprocess_dialog.reset(new SubprocessDialog(parent, "強制停止", false, true));
+                subprocess_dialog->run([name]() {
+                    return call({"systemctl", "kill", std::string("vm@") + name}, true);
+                }, [](int in, int out, auto set_status_string, auto set_progress) {
+                    set_progress(-1);
+                    set_status_string("処理中...");
+                    char c;
+                    while (int i = read(in, &c, 1) > 0) {;}
+                });
+
+                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
+                    std::pair<std::string, Gtk::MessageType> message_type = 
+                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
+                            std::make_pair(name + "を強制停止しました", Gtk::MessageType::INFO) : std::make_pair(name + "を強制停止できませんでした", Gtk::MessageType::ERROR);
+                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
+                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
+                    message_dialog->show();
+                });
+            }
+            confirmation_dialog->hide();
+        });
+        confirmation_dialog->show();
+    }
+
+    void on_click_console() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        console_vmname = _name.value();
+
+        console.grab_focus();
+        list_and_operate.set_visible_child("console");
+        if (terminal_size) fork_console_subprocess(terminal_size->first, terminal_size->second, console_vmname.value());
+        // defer fork when terminal hasn't opened yet
+    }
+
+    void on_click_delete() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を削除します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
+        confirmation_dialog->signal_response().connect([this,name](int res) {
+            if (res == Gtk::ResponseType::OK) {
+                subprocess_dialog.reset(new SubprocessDialog(parent, "削除", false, false));
+                subprocess_dialog->run([name]() {
+                    try {
+                        return delete_vm(name);
+                    }
+                    catch (const std::runtime_error& e) {
+                        std::cerr << e.what() << std::endl;
+                        return -1;
+                    }
+                }, [](int in, int out, auto set_status_string, auto set_progress) {
+                    set_progress(-1);
+                    set_status_string("処理中...");
+                    char c;
+                    while (int i = read(in, &c, 1) > 0) {;}
+                });
+
+                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
+                    std::pair<std::string, Gtk::MessageType> message_type = 
+                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
+                            std::make_pair(name + "を削除しました", Gtk::MessageType::INFO) : std::make_pair(name + "を削除できませんでした", Gtk::MessageType::ERROR);
+                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
+                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
+                    message_dialog->show();
+                });
+            }
+            confirmation_dialog->hide();
+        });
+        confirmation_dialog->show();
     }
 };
 
@@ -340,7 +590,7 @@ public:
         treeview.append_column("全容量", columns.size);
         treeview.append_column("空き容量", columns.free);
 
-        append_page(treeview, "一覧");
+        append_page(treeview, "一覧と操作");
         append_page(create_page, "新規作成");
 
         do_reload();
@@ -569,7 +819,7 @@ public:
     MainWindow(bool login = false);
 };
 
-MainWindow::MainWindow(bool login) : m_shutdown_page(login), m_box(Gtk::Orientation::VERTICAL), m_sidebar_stack_box(Gtk::Orientation::HORIZONTAL)
+MainWindow::MainWindow(bool login) : m_vm_page(*this), m_shutdown_page(login), m_box(Gtk::Orientation::VERTICAL), m_sidebar_stack_box(Gtk::Orientation::HORIZONTAL)
 {
     set_default_size(WINDOW_WIDTH, WINDOW_HEIGHT);
 

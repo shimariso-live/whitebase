@@ -11,6 +11,8 @@
 #include <sys/ioctl.h>
 #include <argparse/argparse.hpp>
 
+#include "vm_op.h"
+
 static struct termios old_term;
 
 void restore_term()
@@ -27,7 +29,6 @@ int connect(const char* vmname, const std::string& socket_name = "serial.sock")
     if (sock < 0) throw std::runtime_error("Cannot create socket");
 
     sockaddr.sun_family = AF_UNIX;
-    std::filesystem::path run_root("/run/vm");
     auto vm_root = run_root / vmname;
     auto serial_socket = vm_root / socket_name;
     strcpy(sockaddr.sun_path, serial_socket.c_str());
@@ -92,9 +93,9 @@ out:;
     return 0;
 }
 
-int console(const char* vmname)
+int console(const std::string& vmname)
 {
-    return console(vmname, "serial.sock");
+    return console(vmname.c_str(), "serial.sock");
 }
 
 int monitor(const std::vector<std::string>& args)
