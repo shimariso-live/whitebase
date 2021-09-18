@@ -16,6 +16,7 @@
 #include "volume.h"
 #include "vm_op.h"
 #include "console.h"
+#include "wg.h"
 
 int console(const std::vector<std::string>& args);
 int monitor(const std::vector<std::string>& args);
@@ -460,7 +461,10 @@ static const std::map<std::string,std::pair<int (*)(const std::vector<std::strin
   {"ui", {gtk4ui,  "Run graphical interface"}},
   {"installer", {gtk4installer, "Run graphical installer"}},
   {"install", {install_cmdline, "Run command line installer"}},
-  {"volume", {volume, "Manage volumes"}}
+  {"volume", {volume, "Manage volumes"}},
+  {"wg-genkey", {wg_genkey, "Generate WireGuard key"}},
+  {"wg-pubkey", {wg_pubkey, "Show WireGuard public key"}},
+  {"wg-getconfig", {wg_getconfig, "Get authorized WireGuard config from server"}},
 };
 
 static void show_subcommands()

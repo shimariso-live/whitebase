@@ -1,8 +1,7 @@
 *.o
 *.a
 *.mo
+*.bin
 wb
-walbrixd
+vm
 wg-walbrix
-xendomain
-textui

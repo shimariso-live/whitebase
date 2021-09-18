@@ -53,4 +53,4 @@ cp -a /usr/share/debootstrap /usr/share/wb/stubvm/.stubroot/usr/share/
 
 mkdir -p /var/vm/\@default
 
-systemctl enable scan-volumes
+systemctl enable scan-volumes generate-wg-walbrix-key

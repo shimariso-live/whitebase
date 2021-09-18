@@ -4,7 +4,7 @@ BINS=$(subst .cpp,.bin,$(call rwildcard,,*.cpp))
 HEADERS=$(call rwildcard,,*.h)
 
 CXXFLAGS ?= -std=c++2a $(shell pkg-config gtkmm-4.0 --cflags)
-LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lyajl -lvterm -lwayland-client -lsmartcols -luuid $(shell pkg-config gtkmm-4.0 --libs)
+LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lyajl -lvterm -lwayland-client -lsmartcols -luuid -lcurl $(shell pkg-config gtkmm-4.0 --libs)
 
 all: wb wg-walbrix messages.mo vm
 
@@ -21,10 +21,10 @@ libproj.a: $(OBJS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid $(shell pkg-config gtkmm-4.0 --libs)
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid -lssl -lcrypto -lcurl $(shell pkg-config gtkmm-4.0 --libs)
 
-wg-walbrix: wg-walbrix.cpp
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto
+wg-walbrix: wg-walbrix.cpp crypt.o common.o
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lyajl -lssl -lcrypto -liniparser4 -lutil
 
 vm: vm.cpp common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil -lyajl
@@ -32,10 +32,8 @@ vm: vm.cpp common.o
 messages.mo: messages.po
 	msgfmt -o $@ $<
 
-install: wb wg-walbrix wg-walbrix.service wg-walbrix.conf messages.mo
-	cp -a wb wg-walbrix vm /usr/sbin/
-	#cp -a walbrixd.service wg-walbrix.service /lib/systemd/system/
-	#cp -a walbrixd.conf wg-walbrix.conf /etc/dbus-1/system.d/
+install: wb wg-walbrix messages.mo
+	cp -a wb vm /usr/sbin/
 	mkdir -p /usr/share/wb/themes/default
 	cp -a default_theme/. /usr/share/wb/themes/default/
 	cp -a messages.mo /usr/share/locale/ja/LC_MESSAGES/

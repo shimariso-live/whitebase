@@ -1,285 +1,534 @@
-#include <unistd.h>
-#include <wait.h>
-#include <poll.h>
-#include <sys/signalfd.h>
-#include <netinet/icmp6.h>
+#include <memory.h>
+#include <getopt.h>
+#include <sys/wait.h>
 
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <vector>
+#include <map>
+#include <set>
+#include <functional>
+#include <optional>
+#include <variant>
 #include <filesystem>
-#include <regex>
+#include <ext/stdio_filebuf.h> // for __gnu_cxx::stdio_filebuf
 
-#include <systemd/sd-bus.h>
+#include <iniparser4/iniparser.h>
+#include <yajl/yajl_gen.h>
 
-#include <Poco/URI.h>
-#include <Poco/Net/HTTPSClientSession.h>
-#include <Poco/Net/HTTPRequest.h>
-#include <Poco/Net/HTTPResponse.h>
-#include <Poco/Net/ICMPClient.h>
-#include <Poco/Net/NetException.h>
-#include <Poco/JSON/Parser.h>
+#include "common.h"
+#include "crypt.h"
 
-#include "wg-walbrix.h"
+static const std::filesystem::path wg_conf_path("/etc/wireguard/wg-walbrix.conf"), data_dir("/var/lib/wg-walbrix");
+static const std::filesystem::path public_dir = data_dir / "public", serial_dir = data_dir / "serial";
+static const std::filesystem::path endpoint_hostname_file = data_dir / "endpoint_hostname";
+static const std::string interface("wg-walbrix");
+static const std::string network_prefix("fd00::/8");
 
-const size_t WG_KEY_LEN = 32;
-const int MTU = 1280;
-const std::string interface("wg-walbrix");
-const std::filesystem::path privkey_path("/etc/walbrix/privkey");
-
-static int exec_command(const std::string& cmd, const std::vector<std::string>& args)
+std::vector<std::string> getopt(
+    int argc, char* argv[], 
+    const std::vector<std::tuple<
+        std::optional<char>/*shortopt*/,
+        std::optional<std::string>/*longopt*/,
+        std::variant<
+            std::function<void(void)>, // 0: no arg
+            std::function<void(const std::optional<std::string>&)>, // 1: optional string arg
+            std::function<void(const std::string&)> // 2: required string arg
+        >/*func*/
+    >>& opts)
 {
-    pid_t pid = fork();
-    if (pid < 0) std::runtime_error("fork");
-    //else
-    if (pid == 0) { //child
-        char* argv[args.size() + 2];
-        int i = 0;
-        argv[i++] = strdup(cmd.c_str());
-        for (auto arg : args) {
-            argv[i++] = strdup(arg.c_str());
+    std::string shortopts;
+    std::vector<struct option> longopts;
+    std::map<std::string,std::variant<
+        std::function<void(void)>,
+        std::function<void(const std::optional<std::string>&)>,
+        std::function<void(const std::string&)>
+    >> funcs;
+    for (const auto& opt:opts) {
+        if (std::get<0>(opt).has_value()) {
+            char shortopt = std::get<0>(opt).value();
+            const auto& func = std::get<2>(opt);
+            shortopts += shortopt;
+            if (std::holds_alternative<std::function<void(const std::optional<std::string>&)>>(func)) shortopts += "::";
+            else if (std::holds_alternative<std::function<void(const std::string&)>>(func)) shortopts += ":";
+            funcs[std::string(1, shortopt)] = func;
         }
-        argv[i] = NULL;
-        if (execvp(cmd.c_str(), argv) < 0) _exit(-1);
-    }
-    // else {
-    int status;
-    waitpid(pid, &status, 0);
-    return status;
-}
-
-std::tuple<std::string,std::string,std::string,std::string,std::string,std::optional<std::string> > register_peer(const std::string& url, const std::string& my_pubkey)
-{
-    Poco::Net::initializeSSL();
-    Poco::URI uri(url);
-    Poco::Net::HTTPSClientSession session(uri.getHost(), uri.getPort());
-    Poco::Net::HTTPRequest req(Poco::Net::HTTPRequest::HTTP_POST, uri.getPath(), Poco::Net::HTTPMessage::HTTP_1_1);
-    std::string body = std::string("pubkey=");
-    Poco::URI::encode(my_pubkey, "+=/", body);
-    req.setContentType("application/x-www-form-urlencoded");
-    req.setContentLength(body.length());
-    //std::cout << body << std::endl;
-    std::ostream& os = session.sendRequest(req);
-    os << body;
-    Poco::Net::HTTPResponse res;
-    std::istream& rs = session.receiveResponse(res);
-    if (res.getStatus() != Poco::Net::HTTPResponse::HTTPStatus::HTTP_OK) {
-        throw std::runtime_error(std::string("HTTP error ") + std::to_string(res.getStatus()));
-    }
-
-    Poco::JSON::Parser parser;
-    Poco::JSON::Object::Ptr ret = parser.parse(rs).extract<Poco::JSON::Object::Ptr>();
-    auto me = ret->getObject("me");
-    auto you = ret->getObject("you");
-
-    auto their_address = me->getValue<std::string>("address");
-    auto endpoint = me->getValue<std::string>("endpoint");
-    auto their_pubkey = me->getValue<std::string>("pubkey");
-    auto sshkey = me->getValue<std::string>("sshkey");
-    auto my_address = you->getValue<std::string>("address");
-    auto psk = ret->has("psk") ? std::optional(ret->getValue<std::string>("psk")) : std::nullopt;
-
-    return std::make_tuple(their_address,endpoint,their_pubkey,sshkey,my_address,psk);
-}
-
-static int method_status(sd_bus_message *m, void *userdata, sd_bus_error *ret_error) 
-{
-    return sd_bus_reply_method_return(m, "u", 1);
-}
-
-static const sd_bus_vtable vtable[] = {
-    SD_BUS_VTABLE_START(0),
-    SD_BUS_METHOD("status", "s", "u", method_status, SD_BUS_VTABLE_UNPRIVILEGED),
-    SD_BUS_VTABLE_END
-};
-
-static std::string get_pubkey()
-{
-    uint8_t privkey_oct[WG_KEY_LEN];
-    std::ifstream f(privkey_path);
-    if (f) {
-        std::string privkey_base64((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        unsigned char privkey_decoded[3*privkey_base64.length()/4];
-        auto n = EVP_DecodeBlock(privkey_decoded, (const unsigned char*)privkey_base64.c_str(), privkey_base64.length());
-        if (n < WG_KEY_LEN) throw std::runtime_error("Private key is invalid");
-        //else
-        memcpy(privkey_oct, privkey_decoded, WG_KEY_LEN);
-    } else {
-        if (getentropy(privkey_oct, WG_KEY_LEN) != 0) throw std::runtime_error("getentropy");
-        // else
-        // curve25519_clamp_secret
-        privkey_oct[0] &= 248;
-        privkey_oct[31] = (privkey_oct[31] & 127) | 64;
-
-        auto privkey_len = sizeof(privkey_oct);
-        char privkey_base64[4*((privkey_len+2)/3)];
-        if (!EVP_EncodeBlock((unsigned char*)privkey_base64, privkey_oct, privkey_len)) throw std::runtime_error("EVP_EncodeBlock");
-
-        std::filesystem::create_directories(privkey_path.parent_path());
-        {
-            std::ofstream f2(privkey_path);
-            if (!f2) throw std::runtime_error("Unable to write to private key file");
-            f2 << privkey_base64;
+        if (std::get<1>(opt).has_value()) {
+            const auto& longopt = std::get<1>(opt).value();
+            const auto& shortopt = std::get<0>(opt);
+            const auto& func = std::get<2>(opt);
+            auto arg_required = std::holds_alternative<std::function<void(const std::optional<std::string>&)>>(func)? optional_argument
+                : ((std::holds_alternative<std::function<void(const std::string&)>>(func))? required_argument : no_argument);
+            longopts.push_back((struct option) {
+                longopt.c_str(),
+                arg_required,
+                0,
+                shortopt.has_value()? shortopt.value() : 0
+            });
+            funcs[longopt] = func;
         }
-        std::filesystem::permissions(privkey_path, 
-            std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
-            std::filesystem::perm_options::replace);
     }
 
-    //else
-    auto privkey = std::shared_ptr<EVP_PKEY>(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, privkey_oct, WG_KEY_LEN), EVP_PKEY_free);
-    if (!privkey) std::runtime_error("Private key is invalid(EVP_PKEY_new_raw_private_key failed)");
-    //else
-    unsigned char pubkey_oct[WG_KEY_LEN];
-    size_t pubkey_len = sizeof(pubkey_oct);
-    if (!EVP_PKEY_get_raw_public_key(privkey.get(), pubkey_oct, &pubkey_len)) {
-        throw std::runtime_error("Unable to generate public key from private key(EVP_PKEY_get_raw_public_key failed).");
+    std::shared_ptr<struct option[]> clongopts(new struct option[longopts.size() + 1]);
+
+    struct option* p = clongopts.get();
+    for (const auto& lo:longopts) { 
+        memcpy(p, &lo, sizeof(*p));
+        p++;
+    }
+    memset(p, 0, sizeof(*p));
+    int c;
+    int longindex = 0;
+    while ((c = getopt_long(argc, argv, shortopts.c_str(), clongopts.get(), &longindex)) >= 0) {
+        const auto func = funcs.find(c == 0? clongopts.get()[longindex].name : std::string(1,(char)c));
+        if (func != funcs.end()) {
+            if (std::holds_alternative<std::function<void(const std::optional<std::string>&)>>(func->second)) {
+                std::get<1>(func->second)(optarg? std::optional<std::string>(optarg) : std::nullopt);
+            } else if (std::holds_alternative<std::function<void(const std::string&)>>(func->second)) {
+                std::get<2>(func->second)(optarg? optarg : "");
+            } else {
+                std::get<0>(func->second)();
+            }
+        }
     }
 
-    char pubkey_base64[4*((pubkey_len+2)/3)];
-    if (!EVP_EncodeBlock((unsigned char*)pubkey_base64, pubkey_oct, pubkey_len)) throw std::runtime_error("EVP_EncodeBlock");
-    //else
-    return pubkey_base64;
+    std::vector<std::string> non_option_args;
+    for (int i = optind; i < argc; i++) {
+        non_option_args.push_back(argv[i]);
+    }
+
+    return non_option_args;
 }
 
-static int loop(const std::string& their_address)
+static std::string make_urlunsafe(const std::string& urlsafe_base64str)
 {
-    struct sockaddr_in6 whereto;
-    whereto.sin6_family = AF_INET6;
-    whereto.sin6_port = htons(0);
-    if (!inet_pton(AF_INET6, their_address.c_str(), &whereto.sin6_addr)) {
-        throw std::runtime_error("inet_pton");
+    std::string urlunsafe_str;
+    for (auto c:urlsafe_base64str) {
+        if (c == '-') c = '+';
+        else if (c == '_') c = '/';
+        urlunsafe_str += c;
     }
+    return urlunsafe_str;
+}
 
-    auto sock = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6); // You need to be root to do this
-    if (sock < 0) throw std::runtime_error("socket");
+static std::string encrypt(const std::string& str, EVP_PKEY* privkey/*mine*/, EVP_PKEY* pubkey/*peer's*/)
+{
+    auto [key, iv] = generate_key_and_iv_from_shared_key(cipher, privkey, pubkey);
 
-    auto last_ping_time = time(NULL);
-    auto last_pong_time = last_ping_time;
-    int retry_count = 0;
+    std::shared_ptr<EVP_CIPHER_CTX> ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+    if (!EVP_EncryptInit_ex(ctx.get(), cipher, NULL, key.get(), iv.get())) throw std::runtime_error("EVP_EncryptInit_ex() failed");
+    uint8_t buf[str.length() + EVP_CIPHER_block_size(cipher) - 1];
+    int len, tmplen;
+    if (!EVP_EncryptUpdate(ctx.get(), buf, &len, (const unsigned char*)str.c_str(), str.length())) {
+        throw std::runtime_error("EVP_EncryptUpdate() failed");
+    }
+    if (!EVP_EncryptFinal_ex(ctx.get(), buf + len, &tmplen)) {
+        throw std::runtime_error("EVP_EncryptFinal_ex() failed");
+    }
+    return base64_encode(buf, len + tmplen);
+}
 
-    // https://tools.ietf.org/html/rfc4443
-    unsigned char icmpv6_packet[sizeof(struct icmp6_hdr) + 8];
+static std::string pubkey_bytes_to_address(const uint8_t* pubkey_bytes)
+{
+    char buf[4*8+7+4+1];
+    sprintf(buf, "fd%02x:%04x:%04x:%04x:%04x:%04x:%04x:%04x/128", 
+        (int)pubkey_bytes[0], 
+        (((int)pubkey_bytes[1]) << 8) | pubkey_bytes[2], 
+        (((int)pubkey_bytes[3]) << 8) | pubkey_bytes[4],
+        (((int)pubkey_bytes[5]) << 8) | pubkey_bytes[6], 
+        (((int)pubkey_bytes[7]) << 8) | pubkey_bytes[8], 
+        (((int)pubkey_bytes[9]) << 8) | pubkey_bytes[10], 
+        (((int)pubkey_bytes[11]) << 8) | pubkey_bytes[12], 
+        (((int)pubkey_bytes[13]) << 8) | pubkey_bytes[14] 
+    );
+    return buf;
+}
 
-    auto ping = [icmpv6_packet,sock,&whereto,&last_ping_time]() {
-        //std::cout << "PING" << std::endl;
-        auto icmph = (struct icmp6_hdr *)icmpv6_packet;
-        icmph->icmp6_type = ICMP6_ECHO_REQUEST;
-        icmph->icmp6_code = 0;
-        icmph->icmp6_cksum = 0;
-        icmph->icmp6_seq= 1;
-        icmph->icmp6_id= 0;
-        strcpy((char*)icmpv6_packet + sizeof(struct icmp6_hdr), "RUTHERE");
-        last_ping_time = time(NULL);
-        return sendto(sock, icmpv6_packet, sizeof(icmpv6_packet), 0/*flags*/, (struct sockaddr *)&whereto, sizeof(struct sockaddr_in6));
+static std::string pubkey_bytes_to_serial(const uint8_t* pubkey_bytes)
+{
+    const uint8_t* b = pubkey_bytes + 27;
+    std::string serial;
+    for (auto n:{
+        (b[0] >> 3) & 0x1f,
+        ((b[0] << 2) + (b[1] >> 6)) & 0x1f,
+        (b[1] >> 1) & 0x1f,
+        ((b[1] << 4) + (b[2] >> 4)) & 0x1f,
+        ((b[2] << 1) + (b[3] >> 7)) & 0x1f,
+        (b[3] >> 2) & 0x1f,
+        ((b[3] << 3) + (b[4] >> 5)) & 0x1f,
+        b[4] & 0x1f
+    }) {
+        serial += "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[n];
+    }
+    return serial;
+}
+
+std::pair<pid_t,int> fork_input(std::function<int(void)> func)
+{
+    int fd[2];
+    if (pipe(fd) < 0) throw std::runtime_error("pipe() failed");
+
+    auto pid = fork();
+    if (pid < 0) throw std::runtime_error("fork() failed");
+    if (pid > 0) {
+        // parent process
+        close(fd[1]);
+        return {pid, fd[0]};
+    }
+    //else(child process)
+    try {
+        dup2(fd[1], STDOUT_FILENO);
+        close(fd[0]);
+        _exit(func());
+    }
+    catch (...) {
+        // jumping across scope border in forked process may not be a good idea.
+    }
+    _exit(-1);
+}
+
+int init(int argc, char* argv[])
+{
+    auto usage = [argv]() {
+        std::cout << "Usage:" << std::endl;
+        std::cout << argv[0] << " <endpoint-hostname>" << std::endl;
+        return 1;
     };
 
-    sd_bus_slot *slot = NULL;
-    sd_bus *bus = NULL;
+    auto args = getopt(argc, argv, {
+        {'h', "help", [usage]() {
+            exit(usage());
+        }}
+    });
 
-    auto r = sd_bus_open_system(&bus);
-    if (r < 0) {
-        throw std::runtime_error(std::string("Failed to connect to system bus: ") + strerror(-r));
+    if (args.size() < 1) {
+        return usage();
     }
 
-    /* Install the object */
-    r = sd_bus_add_object_vtable(bus,
-                                    &slot,
-                                    WG_WALBRIX_OBJECT_PATH,  /* object path */
-                                    WG_WALBRIX_INTERFACE_NAME,   /* interface name */
-                                    vtable,
-                                    NULL);
-    if (r < 0) {
-        throw std::runtime_error(std::string("Failed to issue method call: ") + strerror(-r));
-    }
+    auto endpoint_hostname = args[0];
+    std::filesystem::create_directories(serial_dir);
+    std::filesystem::create_directories(public_dir);
 
-    /* Take a well-known service name so that clients can find us */
-    r = sd_bus_request_name(bus, WG_WALBRIX_SERVICE_NAME, 0);
-    if (r < 0) {
-        throw std::runtime_error(std::string("Failed to acquire service name: ") + strerror(-r));
-    }
+    std::ofstream f(endpoint_hostname_file);
+    if (!f) throw std::runtime_error(endpoint_hostname_file.string() + " cannot be opened for write");
+    f << endpoint_hostname;
 
-    sigset_t mask;
-    sigemptyset (&mask);
-    sigaddset (&mask, SIGINT);
-    sigaddset (&mask, SIGTERM);
-    sigprocmask(SIG_SETMASK, &mask, NULL);
-    auto sigfd = signalfd (-1, &mask, SFD_NONBLOCK|SFD_CLOEXEC);
-    struct pollfd pollfds[2];
-    pollfds[0].fd = sigfd;
-    pollfds[0].events = POLLIN;
-    pollfds[1].fd = sock;
-    pollfds[1].events = POLLIN;
-    pollfds[2].fd = sd_bus_get_fd(bus);
-    pollfds[2].events = sd_bus_get_events(bus);
-    while (true) {
-        if (poll(pollfds, 3, 1000) < 0) throw std::runtime_error("poll");
-        if (pollfds[0].revents & POLLIN) break;
-        //else
-        auto now = time(NULL);
-        if (pollfds[1].revents & POLLIN) {
-            auto n = recvfrom(sock, icmpv6_packet, sizeof(icmpv6_packet), 0, NULL, NULL);
-            auto hdrsize = sizeof(struct icmp6_hdr);
-            if (n == hdrsize + 8 && icmpv6_packet[0] == ICMP6_ECHO_REPLY && memcmp(icmpv6_packet + hdrsize, "RUTHERE", 8) == 0) {
-                last_pong_time = now;
-                retry_count = 0;
-                //std::cout << "PONG" << std::endl;
-            }
-        }
-        if (pollfds[2].revents) {
-            auto r = sd_bus_process(bus, NULL);
-        }
-        if (last_ping_time > last_pong_time && last_ping_time < now - 5) {
-            if (retry_count >= 10) {
-                std::cout << "No ping reply. service will be restarted." << std::endl;
-                break;
-            }
-            ping();
-            retry_count ++;
-        } else if (last_ping_time < now - 60) {
-            ping();
-        }
-    }
-    close(sock);
-    return 1;
+    return 0;
 }
 
-static int _main(int argc, char* argv[])
+int authorize(int argc, char* argv[])
 {
+    auto usage = [argv]() {
+        std::cout << "Usage:" << std::endl;
+        std::cout << argv[0] << " [--serial=ABCD1234] [--force] <client-pubkey-in-base64>" << std::endl;
+        return 1;
+    };
+
+    std::optional<std::string> serial;
+    bool force = false;
+    auto args = getopt(argc, argv, {
+        {'h', "help", [usage]() {
+            exit(usage());
+        }},
+        {'f', "force", [&force]() {
+            force = true;
+        }},
+        {'s', "serial", (std::function<void(const std::string&)>)[&serial](const auto& optarg) {
+            serial = optarg;
+        }}
+    });
+
+    if (args.size() < 1) {
+        return usage();
+    }
+    //else
+    std::string endpoint_hostname;
+    {
+        std::ifstream f(endpoint_hostname_file);
+        if (!f) throw std::runtime_error("Cannot open " + endpoint_hostname_file.string() + ". 'init' not done yet?");
+        f >> endpoint_hostname;
+    }
+
+    auto peer_pubkey_b64 = args[0];
+    auto peer_pubkey_bytes = base64_decode(peer_pubkey_b64);
+    std::shared_ptr<EVP_PKEY> peer_pubkey(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL, peer_pubkey_bytes.first.get(), std::min(WG_KEY_LEN, peer_pubkey_bytes.second)), EVP_PKEY_free);
+    if (!peer_pubkey) throw std::runtime_error("Invalid client public key " + peer_pubkey_b64);
+
+    std::shared_ptr<dictionary> wg_conf(iniparser_load(wg_conf_path.c_str()), iniparser_freedict);
+    if (!wg_conf) throw std::runtime_error("Couldn't open " + wg_conf_path.string());
+    // else
+    auto privkey_base64 = iniparser_getstring(wg_conf.get(), "interface:PrivateKey", NULL);
+    if (!privkey_base64) throw std::runtime_error("PrivateKey is not defined in " + wg_conf_path.string());
+    //else
+    auto privkey_bytes = base64_decode(privkey_base64);
+    auto privkey = std::shared_ptr<EVP_PKEY>(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, privkey_bytes.first.get(), std::min(WG_KEY_LEN, privkey_bytes.second)), EVP_PKEY_free);
+    if (!privkey) throw std::runtime_error("Private key is invalid(EVP_PKEY_new_raw_private_key failed).");
+
+    unsigned char my_pubkey_bytes[WG_KEY_LEN];
+    size_t my_pubkey_len = WG_KEY_LEN;
+    if (!EVP_PKEY_get_raw_public_key(privkey.get(), my_pubkey_bytes, &my_pubkey_len)) {
+        throw std::runtime_error("Unable to generate public key from private key(EVP_PKEY_get_raw_public_key failed)");
+    }
+    auto port = iniparser_getstring(wg_conf.get(), "interface:ListenPort", NULL);
+    if (!port) throw std::runtime_error("ListenPort is not defined in " + wg_conf_path.string());;
+
+    auto my_address = iniparser_getstring(wg_conf.get(), "interface:Address", NULL);
+    if (!my_address) throw std::runtime_error("Address is not defined in " + wg_conf_path.string());;
+
+    auto homedir_cstr = getenv("HOME");
+    std::filesystem::path homedir(homedir_cstr? homedir_cstr : "/root");
+    std::ifstream id_rsa_pub(homedir / ".ssh/id_rsa.pub");
+    std::optional<std::string> sshkey = id_rsa_pub? [](auto& f){
+        std::string s;
+        return (std::getline(f, s) && s != "") ? std::make_optional(s) : std::nullopt;
+    }(id_rsa_pub) : std::nullopt;
+
+    if (!serial) {
+        serial = pubkey_bytes_to_serial(peer_pubkey_bytes.first.get());
+    }
+
+    std::shared_ptr<yajl_gen_t> gen(yajl_gen_alloc(NULL), yajl_gen_free);
+    yajl_gen_map_open(gen.get());
+    yajl_gen_string(gen.get(), (const unsigned char*)"endpoint", 8);
+    std::string endpoint = endpoint_hostname + ':' + port;
+    yajl_gen_string(gen.get(), (const unsigned char*)endpoint.c_str(), endpoint.length());
+    yajl_gen_string(gen.get(), (const unsigned char*)"peer-address", 12);
+    yajl_gen_string(gen.get(), (const unsigned char*)my_address, strlen(my_address));
+    yajl_gen_string(gen.get(), (const unsigned char*)"address", 7);
+    auto address = pubkey_bytes_to_address(peer_pubkey_bytes.first.get());
+    yajl_gen_string(gen.get(), (const unsigned char*)address.c_str(), address.length());
+    if (sshkey) {
+        yajl_gen_string(gen.get(), (const unsigned char*)"ssh-key", 7);
+        yajl_gen_string(gen.get(), (const unsigned char*)sshkey.value().c_str(), sshkey.value().length());
+    }
+    if (serial) {
+        yajl_gen_string(gen.get(), (const unsigned char*)"serial", 6);
+        yajl_gen_string(gen.get(), (const unsigned char*)serial.value().c_str(), serial.value().length());
+    }
+    yajl_gen_map_close(gen.get());
+    const uint8_t* buf;
+    size_t len;
+    yajl_gen_get_buf(gen.get(), &buf, &len);
+    std::string json((const char*)buf, len);
+
+    auto client_file =  public_dir / make_urlsafe(peer_pubkey_b64);
+    if (!std::filesystem::exists(client_file) || force) {
+        std::ofstream f(client_file);
+        if (!f) throw std::runtime_error("client file couldn't be open for write");
+        //else
+        f << base64_encode(my_pubkey_bytes, my_pubkey_len) << ',' << encrypt(json, privkey.get(), peer_pubkey.get()) << std::endl;
+    } else {
+        throw std::runtime_error("Client file " + client_file.string() + " already exists.  Use --force to overwrite");
+    }
+
+    if (serial) {
+        std::ofstream f(serial_dir / serial.value());
+        if (!f) throw std::runtime_error("serial file couldn't be open for write");
+        f << peer_pubkey_b64;
+    }
+
+    std::cout << "Client authorized successfully." << std::endl;
+    std::cout << "Serial: " << serial.value_or("N/A") << std::endl;
+    std::cout << "Public Key: " << peer_pubkey_b64 << std::endl;
+    std::cout << "Client file: " << client_file << std::endl;
+    std::cout << "Address: " << address << std::endl;
+
+    return 0;
+}
+
+static std::string determine_pubkey(const std::string& serial_or_pubkey_b64)
+{
+    if (std::filesystem::exists(public_dir / make_urlsafe(serial_or_pubkey_b64))) {
+        return serial_or_pubkey_b64;
+    }
+    
+    //else
+    if (std::filesystem::exists(serial_dir / serial_or_pubkey_b64)) {
+        std::ifstream f(serial_dir / serial_or_pubkey_b64);
+        if (f) {
+            std::string s;
+            f >> s;
+            return s;
+        }
+    }
+
+    throw std::runtime_error(serial_or_pubkey_b64 + " is not a serial or pubkey");
+}
+
+int show(int argc, char* argv[])
+{
+    auto usage = [argv]() {
+        std::cout << "Usage:" << std::endl;
+        std::cout << argv[0] << " <serial|pubkey in base64>" << std::endl;
+        return 1;
+    };
+
+    auto args = getopt(argc, argv, {
+        {'h', "help", [usage]() {
+            exit(usage());
+        }}
+    });
+
+    if (args.size() < 1) {
+        return usage();
+    }
+
+    auto peer_pubkey_b64 = determine_pubkey(args[0]);
+
+    auto peer_pubkey_bytes = base64_decode(peer_pubkey_b64);
+    std::shared_ptr<EVP_PKEY> peer_pubkey(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL, peer_pubkey_bytes.first.get(), std::min(WG_KEY_LEN, peer_pubkey_bytes.second)), EVP_PKEY_free);
+    if (!peer_pubkey) throw std::runtime_error("Invalid client public key " + peer_pubkey_b64);
+
+    std::shared_ptr<dictionary> wg_conf(iniparser_load(wg_conf_path.c_str()), iniparser_freedict);
+    if (!wg_conf) throw std::runtime_error("Couldn't open " + wg_conf_path.string());
+    // else
+    auto privkey_base64 = iniparser_getstring(wg_conf.get(), "interface:PrivateKey", NULL);
+    if (!privkey_base64) throw std::runtime_error("PrivateKey is not defined in " + wg_conf_path.string());
+    //else
+    auto privkey_bytes = base64_decode(privkey_base64);
+    auto privkey = std::shared_ptr<EVP_PKEY>(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, privkey_bytes.first.get(), std::min(WG_KEY_LEN, privkey_bytes.second)), EVP_PKEY_free);
+    if (!privkey) throw std::runtime_error("Private key is invalid(EVP_PKEY_new_raw_private_key failed).");
+
+    auto client_file = public_dir / make_urlsafe(peer_pubkey_b64);
+    std::ifstream f(client_file);
+    if (!f) throw std::runtime_error(client_file.string() + " couldn't be opened");
+    //else
+    std::string line;
+    f >> line;
+    auto comma_pos = line.find_first_of(',');
+    if (comma_pos != line.npos) line.erase(line.begin(), line.begin() + comma_pos + 1);
+
+    std::cout << decrypt(line, privkey.get(), peer_pubkey.get()) << std::endl;
+    return 0;
+}
+
+int _delete(int argc, char* argv[])
+{
+    auto usage = [argv]() {
+        std::cout << "Usage:" << std::endl;
+        std::cout << argv[0] << " <serial|pubkey in base64>" << std::endl;
+        return 1;
+    };
+
+    auto args = getopt(argc, argv, {
+        {'h', "help", [usage]() {
+            exit(usage());
+        }}
+    });
+
+    if (args.size() < 1) {
+        return usage();
+    }
+
+    auto peer_pubkey_b64 = determine_pubkey(args[0]);
+    auto client_file = public_dir / make_urlsafe(peer_pubkey_b64);
+
+    std::filesystem::remove(client_file);
+
+    return 0;
+}
+
+int load(int argc, char* argv[])
+{
+    std::shared_ptr<dictionary> wg_conf(iniparser_load(wg_conf_path.c_str()), iniparser_freedict);
+    if (!wg_conf) throw std::runtime_error("Couldn't open " + wg_conf_path.string());
+
+    auto privkey_base64 = iniparser_getstring(wg_conf.get(), "interface:PrivateKey", NULL);
+    if (!privkey_base64) throw std::runtime_error("PrivateKey is not defined in " + wg_conf_path.string());
+    auto my_address = iniparser_getstring(wg_conf.get(), "interface:Address", NULL);
+    if (!my_address) throw std::runtime_error("Address is not defined in " + wg_conf_path.string());
+
+    check_call({"ip", "-6", "address", "replace", network_prefix, "dev", interface});
+
+    auto [pid, in] = fork_input([]() {
+        exec({"wg", "show", interface, "peers"});
+        //exec({"ls", "-1", "/"});
+        return -1;
+    });
+
+    std::set<std::string> present_peers;
+    {
+        __gnu_cxx::stdio_filebuf<char> filebuf(in, std::ios::in);
+        std::istream f(&filebuf);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line != "") present_peers.insert(line);
+        }
+    }
+
+    int wstatus;
+    waitpid(pid, &wstatus, 0);
+    if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) throw std::runtime_error("wg command failed");
+
+    for (const auto& d : std::filesystem::directory_iterator(public_dir)) {
+        if (!d.is_regular_file()) continue;
+        auto pubkey_b64 = make_urlunsafe(d.path().filename().string());
+        if (present_peers.find(pubkey_b64) == present_peers.end()) {
+            auto pubkey_bytes = base64_decode(pubkey_b64);
+            auto address = pubkey_bytes_to_address(pubkey_bytes.first.get());
+            check_call({"wg", "set", interface, "peer", pubkey_b64, "allowed-ips", address});
+        } else {
+            present_peers.erase(pubkey_b64);
+        }
+    }
+
+    for (const auto& p:present_peers) {
+        check_call({"wg", "set", interface, "peer", p, "remove"});
+    }
+
+    return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    std::map<std::string, std::function<int(int,char*[])>> subcommands = {
+        {"init", init},
+        {"authorize", authorize},
+        {"show", show},
+        {"delete", _delete},
+        {"load", load}
+    };
+
     if (argc < 2) {
-        std::cout << argv[0] << " URL" << std::endl;
+        std::cout << "subcommand required. Valid subcommands are:" << std::endl;
+        for (auto sc:subcommands) {
+            std::cout << sc.first << std::endl;
+        }
         return 1;
     }
-    auto url = argv[1];
-    int rst = 0;
+
+    if (subcommands.find(argv[1]) == subcommands.end()) {
+        std::cout << "Subcommand " << argv[1] << " unknown. Valid subcommands are:" << std::endl;
+        for (auto sc:subcommands) {
+            std::cout << sc.first << std::endl;
+        }
+        return 1;
+    }
+
+    //else
     try {
-        auto my_pubkey = get_pubkey();
-        std::cout << "Public key: " << my_pubkey << std::endl;
-        auto const& [their_address,endpoint,their_pubkey,sshkey,my_address,psk] = register_peer(url, my_pubkey);
-        if (exec_command("ip", {"link", "add", interface, "type", "wireguard"}) != 0) throw std::runtime_error("ip link add");
-        //else
-        exec_command("wg", {"set", interface, "private-key", privkey_path.string()});
-        exec_command("wg", {"set", interface, "peer", their_pubkey, "endpoint", endpoint, "persistent-keepalive", "25", "allowed-ips", their_address});
-        exec_command("ip", {"link", "set", interface, "up"});
-        exec_command("ip", {"link", "set", interface, "mtu", std::to_string(MTU)});
-        exec_command("ip", {"-6", "address", "replace", my_address, "dev", interface});
-        exec_command("ip", {"route", "replace", their_address, "dev", interface});
-        rst = loop(std::regex_replace(their_address, std::regex("/\\d+$"), ""));
+        return subcommands[argv[1]](argc - 1, argv + 1);
     }
-    catch ( const std::runtime_error& ex ) {
-        std::cerr << ex.what() << std::endl;
-        rst = 1;
+    catch (const std::runtime_error e) {
+        std::cerr << e.what() << std::endl;
     }
-    catch ( const Poco::Net::NetException& ex) {
-        std::cerr << ex.message() << std::endl;
-        rst = 1;
-    }
-    exec_command("ip", {"link", "set", interface, "down"});
-    exec_command("ip", {"link", "del", interface});
-    return rst;
+    return -1;
 }
 
-#ifdef __MAIN_MODULE__
-int main(int argc, char* argv[]) { return _main(argc, argv); }
-#endif
+/*
+#etc/systemd/system/wg-walbrix.service
+[Unit]
+Description=Registration service for wg-walbrix
+After=network.target wg-quick@wg-walbrix.service
+PartOf=wg-quick@wg-walbrix.service
 
-// g++ -std=c++2a -D__MAIN_MODULE__ -o wg-walbrix wg-walbrix.cpp -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON
+[Service]
+ExecStart=/usr/local/bin/wg-walbrix load
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+*/
+
+// g++ -std=c++2a -o wg-walbrix-authorize wg-walbrix-authorize.cpp -lssl -lcrypto -liniparser4 -lyajl

@@ -1,0 +1,11 @@
+[Unit]
+Description=Generate wg-walbrix secret key
+Requires=local-fs.target
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/wb wg-genkey
+
+[Install]
+WantedBy=multi-user.target
