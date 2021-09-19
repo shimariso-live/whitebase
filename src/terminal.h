@@ -52,7 +52,7 @@ class Terminal : public Gtk::DrawingArea {
     sigc::signal<void(void)> m_signal_open_terminal;
     sigc::signal<void(int,int)> m_signal_resize_terminal;
 public:
-    Terminal(int _font_size = 20);
+    Terminal(int _font_size = 18);
 
     void connect(int fd);
     void disconnect();

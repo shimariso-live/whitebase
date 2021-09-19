@@ -1,14 +1,17 @@
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include <vector>
 #include <string>
 #include <fstream>
 #include <memory>
 #include <filesystem>
+#include <ext/stdio_filebuf.h> // for __gnu_cxx::stdio_filebuf
 
 #include <curl/curl.h>
 #include <argparse/argparse.hpp>
 #include <yajl/yajl_tree.h>
+#include <qrencode.h>
 
 #include "common.h"
 #include "crypt.h"
@@ -101,12 +104,78 @@ static std::shared_ptr<EVP_PKEY> get_pubkey(const uint8_t* pubkey_bytes)
     return pubkey;
 }
 
-int wg_pubkey(const std::vector<std::string>&)
+static void print_qrcode(const QRcode *qrcode)
 {
+    static const char* white = "\033[48;5;231m";
+    static const char* black = "\033[48;5;16m";
+    static const char* reset = "\033[0m";
+
+    auto vmargin = [](int qrwidth, int margin) {
+        for (int y = 0; y < margin; y++) {
+            std::cout << white;
+            for (int x = 0; x < qrwidth + margin * 2/*left and right*/; x++) {
+                std::cout << "  ";
+            }
+            std::cout << reset << std::endl;
+        }
+    };
+
+    vmargin(qrcode->width, 2);
+
+    for (int y = 0; y < qrcode->width; y++) {
+        std::string buffer;
+        const uint8_t* row = qrcode->data + (y * qrcode->width);
+        buffer += white;
+        buffer += "    "; // left margin(2)
+        bool last = false;
+        for (int x = 0; x < qrcode->width; x++) {
+            if (row[x] & 1) {
+                if (!last) {
+                    buffer += black;
+                    last = true;
+                }
+            } else if (last) {
+                buffer += white;
+                last = false;
+            }
+            buffer += "  ";
+        }
+
+        if (last) buffer += white;
+        buffer += "    "; // right margin(2)
+        buffer += reset;
+        std::cout << buffer << std::endl;
+    }
+
+    vmargin(qrcode->width, 2);
+}
+
+int wg_pubkey(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("--qrcode", "-q").help("Print QR code instead of text").default_value(false).implicit_value(true);
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
     auto privkey = get_privkey(get_privkey_b64());
     auto pubkey_bytes = get_pubkey_bytes(privkey.get());
 
-    std::cout << base64_encode(pubkey_bytes.get(), WG_KEY_LEN) << std::endl;
+    auto pubkey_b64 = base64_encode(pubkey_bytes.get(), WG_KEY_LEN);
+
+    if (program.get<bool>("--qrcode")) {
+        std::shared_ptr<QRcode> qrcode(QRcode_encodeString(pubkey_b64.c_str(), 0, QR_ECLEVEL_L, QR_MODE_8, 1), QRcode_free);
+        if (!qrcode) throw std::runtime_error("Failed to generate QR code. " + std::string(strerror(errno)));
+        print_qrcode(qrcode.get());
+    } else {
+        std::cout << pubkey_b64 << std::endl;
+    }
 
     return 0;
 }
@@ -260,9 +329,61 @@ int wg_getconfig(const std::vector<std::string>& args)
     return wg_getconfig(program.get<bool>("--accept-ssh-key"));
 }
 
+int wg_notify(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("uri").help("URI to get");
+
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    auto uri = program.get<std::string>("uri");
+
+    auto [pid, in] = forkinput([]() {
+        exec({"wg", "show", "all", "allowed-ips"});
+        return -1;
+    });
+
+    {
+        __gnu_cxx::stdio_filebuf<char> filebuf(in, std::ios::in);
+        std::istream f(&filebuf);
+        std::string line;
+        while (std::getline(f, line)) {
+            if (!line.starts_with("wg-walbrix\t")) continue;
+            line.erase(0, 11);
+            auto delim_pos = line.find_first_of('\t');
+            if (delim_pos == line.npos) continue;
+            //else
+            line.erase(0, delim_pos + 1);
+            if (!line.ends_with("/128")) continue;
+            line.resize(line.length() - 4);
+            std::string url = "http://[" + line + "]" + (uri.starts_with('/')? "" : "/") + uri;
+            std::string buf;
+            std::shared_ptr<CURL> curl(curl_easy_init(), curl_easy_cleanup);
+            curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl.get(), CURLOPT_TIMEOUT, 3);
+            curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, curl_callback);
+            curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &buf);
+            curl_easy_perform(curl.get());
+        }
+    }
+
+    int wstatus;
+    waitpid(pid, &wstatus, 0);
+    if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) throw std::runtime_error("wg command failed");
+
+    return 0;
+}
+
 static int _main(int,char*[])
 {
-    return wg_getconfig(true);
+    return wg_notify({"wg-notify","/hoge/fuga"});
 }
 
 #ifdef __MAIN_MODULE__

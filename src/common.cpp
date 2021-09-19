@@ -60,6 +60,30 @@ std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<
     _exit(-1);
 }
 
+std::pair<pid_t,int> forkinput(std::function<int(void)> func)
+{
+    int fd[2];
+    if (pipe(fd) < 0) throw std::runtime_error("pipe() failed");
+
+    auto pid = fork();
+    if (pid < 0) throw std::runtime_error("fork() failed");
+    if (pid > 0) {
+        // parent process
+        close(fd[1]);
+        return {pid, fd[0]};
+    }
+    //else(child process)
+    try {
+        dup2(fd[1], STDOUT_FILENO);
+        close(fd[0]);
+        _exit(func());
+    }
+    catch (...) {
+        // jumping across scope border in forked process may not be a good idea.
+    }
+    _exit(-1);
+}
+
 static pid_t pid_to_propagate_sigterm;
 
 int call(const std::vector<std::string>& cmdline, bool propagate_sigterm/*=false*/)

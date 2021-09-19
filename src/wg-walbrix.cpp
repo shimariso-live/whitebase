@@ -164,30 +164,6 @@ static std::string pubkey_bytes_to_serial(const uint8_t* pubkey_bytes)
     return serial;
 }
 
-std::pair<pid_t,int> fork_input(std::function<int(void)> func)
-{
-    int fd[2];
-    if (pipe(fd) < 0) throw std::runtime_error("pipe() failed");
-
-    auto pid = fork();
-    if (pid < 0) throw std::runtime_error("fork() failed");
-    if (pid > 0) {
-        // parent process
-        close(fd[1]);
-        return {pid, fd[0]};
-    }
-    //else(child process)
-    try {
-        dup2(fd[1], STDOUT_FILENO);
-        close(fd[0]);
-        _exit(func());
-    }
-    catch (...) {
-        // jumping across scope border in forked process may not be a good idea.
-    }
-    _exit(-1);
-}
-
 int init(int argc, char* argv[])
 {
     auto usage = [argv]() {
@@ -441,7 +417,7 @@ int load(int argc, char* argv[])
 
     check_call({"ip", "-6", "address", "replace", network_prefix, "dev", interface});
 
-    auto [pid, in] = fork_input([]() {
+    auto [pid, in] = forkinput([]() {
         exec({"wg", "show", interface, "peers"});
         //exec({"ls", "-1", "/"});
         return -1;

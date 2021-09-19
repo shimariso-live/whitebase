@@ -465,6 +465,7 @@ static const std::map<std::string,std::pair<int (*)(const std::vector<std::strin
   {"wg-genkey", {wg_genkey, "Generate WireGuard key"}},
   {"wg-pubkey", {wg_pubkey, "Show WireGuard public key"}},
   {"wg-getconfig", {wg_getconfig, "Get authorized WireGuard config from server"}},
+  {"wg-notify", {wg_notify, "Send notification message via HTTP over WireGuard"}},
 };
 
 static void show_subcommands()

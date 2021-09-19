@@ -4,7 +4,7 @@ BINS=$(subst .cpp,.bin,$(call rwildcard,,*.cpp))
 HEADERS=$(call rwildcard,,*.h)
 
 CXXFLAGS ?= -std=c++2a $(shell pkg-config gtkmm-4.0 --cflags)
-LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lyajl -lvterm -lwayland-client -lsmartcols -luuid -lcurl $(shell pkg-config gtkmm-4.0 --libs)
+LIBS ?= -lpam -lpam_misc -liniparser4 -lmount -lblkid -lsystemd -lutil -lPocoNet -lPocoNetSSL -lPocoFoundation -lPocoJSON -lssl -lcrypto -licuuc -lyajl -lvterm -lwayland-client -lsmartcols -luuid -lcurl -lqrencode $(shell pkg-config gtkmm-4.0 --libs)
 
 all: wb wg-walbrix messages.mo vm
 
@@ -21,7 +21,7 @@ libproj.a: $(OBJS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid -lssl -lcrypto -lcurl $(shell pkg-config gtkmm-4.0 --libs)
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid -lssl -lcrypto -lcurl -lqrencode $(shell pkg-config gtkmm-4.0 --libs)
 
 wg-walbrix: wg-walbrix.cpp crypt.o common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lyajl -lssl -lcrypto -liniparser4 -lutil
