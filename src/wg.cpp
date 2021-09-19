@@ -104,6 +104,16 @@ static std::shared_ptr<EVP_PKEY> get_pubkey(const uint8_t* pubkey_bytes)
     return pubkey;
 }
 
+std::optional<std::string> get_pubkey_b64()
+{
+    if (!std::filesystem::exists(privkey_path) || !std::filesystem::is_regular_file(privkey_path)) return std::nullopt;
+
+    auto privkey = get_privkey(get_privkey_b64());
+    auto pubkey_bytes = get_pubkey_bytes(privkey.get());
+
+    return base64_encode(pubkey_bytes.get(), WG_KEY_LEN);
+}
+
 static void print_qrcode(const QRcode *qrcode)
 {
     static const char* white = "\033[48;5;231m";
@@ -164,10 +174,11 @@ int wg_pubkey(const std::vector<std::string>& args)
         return 1;
     }
 
-    auto privkey = get_privkey(get_privkey_b64());
-    auto pubkey_bytes = get_pubkey_bytes(privkey.get());
+    auto _pubkey_b64 = get_pubkey_b64();
+    if (!_pubkey_b64) throw std::runtime_error("Public key not available(Private key hasn't been generated?)");
+    //else
 
-    auto pubkey_b64 = base64_encode(pubkey_bytes.get(), WG_KEY_LEN);
+    auto pubkey_b64 = _pubkey_b64.value();
 
     if (program.get<bool>("--qrcode")) {
         std::shared_ptr<QRcode> qrcode(QRcode_encodeString(pubkey_b64.c_str(), 0, QR_ECLEVEL_L, QR_MODE_8, 1), QRcode_free);
@@ -194,12 +205,17 @@ static std::string strip_name_from_ssh_key(const std::string& ssh_key)
     return last_spc != ssh_key.npos? ssh_key.substr(0, last_spc) : ssh_key;
 }
 
+std::string get_authorization_url(const std::string& pubkey_b64)
+{
+    return "https://hub.walbrix.net/authorized/" + make_urlsafe(pubkey_b64);
+}
+
 int wg_getconfig(bool accept_ssh_key)
 {
     auto privkey_b64 = get_privkey_b64();
     auto privkey = get_privkey(privkey_b64);
     auto pubkey_bytes = get_pubkey_bytes(privkey.get());
-    std::string url = "https://hub.walbrix.net/authorized/" + make_urlsafe(base64_encode(pubkey_bytes.get(), WG_KEY_LEN));
+    std::string url = get_authorization_url(base64_encode(pubkey_bytes.get(), WG_KEY_LEN));
     //std::cout << url << std::endl;
 
     std::shared_ptr<CURL> curl(curl_easy_init(), curl_easy_cleanup);

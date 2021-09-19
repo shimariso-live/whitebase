@@ -12,6 +12,7 @@
 
 #include <glibmm.h>
 #include <wayland-client.h>
+#include <qrencode.h>
 
 #include "terminal.h"
 #include "volume.h"
@@ -20,6 +21,7 @@
 #include "subprocess.h"
 #include "vm_op.h"
 #include "console.h"
+#include "wg.h"
 
 static const int WINDOW_WIDTH = 1024;
 static const int WINDOW_HEIGHT = 768;
@@ -734,6 +736,117 @@ public:
 };
 
 class SettingsPage : public Gtk::Box {
+    Gtk::Box status_header;
+    Gtk::Label status_label;
+    Gtk::DrawingArea qrcode_area;
+    std::shared_ptr<QRcode> qrcode;
+    std::optional<std::string> pubkey_b64;
+    Gtk::Button reload_button, connect, disconnect;
+    Gtk::CheckButton accept_ssh_key;
+public:
+    SettingsPage() : Gtk::Box(Gtk::Orientation::VERTICAL), 
+        status_header(Gtk::Orientation::HORIZONTAL),
+        reload_button("最新の情報に更新(_R)", true), 
+        connect("中央サーバへ接続する(_C)", true), disconnect("中央サーバから切断する(_D)", true), 
+        accept_ssh_key("開発元からの遠隔ログインを受け入れる(_A)", true) {
+
+        status_label.set_hexpand();
+        status_header.append(status_label);
+        status_header.append(reload_button);
+
+        reload_button.signal_clicked().connect([this]() {
+            reload();
+        });
+
+        qrcode_area.set_expand();
+        qrcode_area.set_draw_func([this](const Cairo::RefPtr<Cairo::Context>& cairo, int width, int height) {
+            if (!qrcode) return;
+            int size = std::min(width, height);
+            int content_size = size * 9 / 10, hmargin = (width - content_size) / 2, vmargin = (height - content_size) / 2;
+            int square_size = content_size / qrcode->width;
+
+            cairo->set_source_rgb(1.0, 1.0, 1.0);
+            cairo->rectangle(0, 0, width, height);
+            cairo->fill();
+
+            cairo->set_source_rgb(0.0, 0.0, 0.0);
+
+            for (int y = 0; y < qrcode->width; y++) {
+                for (int x = 0; x < qrcode->width; x++) {
+                    if (qrcode->data[y * qrcode->width + x] & 1) {
+                        cairo->rectangle(x * square_size + hmargin, y * square_size + vmargin, square_size, square_size);
+                    }
+                }
+            }
+            cairo->fill();
+        });
+
+        connect.signal_clicked().connect([this]() {
+            try {
+                if (wg_getconfig(accept_ssh_key.get_active()) == 0) {
+                    check_call({"systemctl", "start", "wg-quick@wg-walbrix"});
+                    check_call({"systemctl", "enable", "wg-quick@wg-walbrix"});
+                }
+                reload();
+            }
+            catch (const std::runtime_error& e) {
+                std::cerr << e.what() << std::endl;
+            }
+        });
+
+        disconnect.signal_clicked().connect([this]() {
+            if (call({"systemctl", "stop", "wg-quick@wg-walbrix"}) == 0) {
+                call({"systemctl", "disable", "wg-quick@wg-walbrix"});
+                reload();
+            }
+        });
+
+        append(status_header);
+        append(qrcode_area);
+        append(accept_ssh_key);
+        append(connect);
+        append(disconnect);
+    }
+
+    virtual void on_realize()
+    {
+        Gtk::Box::on_realize();
+        reload();
+    }
+
+    void reload() {
+        try {
+            pubkey_b64 = get_pubkey_b64();
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << e.what() << std::endl;
+        }
+
+        if (call({"systemctl", "is-active", "wg-quick@wg-walbrix"}) == 0) {
+            status_label.set_text("中央サーバへ接続済みです");
+            qrcode_area.hide();
+            connect.hide();
+            disconnect.show();
+            accept_ssh_key.hide();
+        } else if (pubkey_b64 && call({"curl", "-I", "-f", get_authorization_url(pubkey_b64.value())}) == 0) {
+            status_label.set_text("中央サーバへの接続承認が完了しています。");
+            qrcode_area.hide();
+            connect.show();
+            disconnect.hide();
+            accept_ssh_key.show();
+        } else {
+            status_label.set_text("中央サーバへの接続承認を受けるには下記のQRコードを読み取って承認依頼メールを送信してください。\n接続が承認されたら「最新の情報に更新」を押して接続処理へ進みます");
+            qrcode_area.show();
+            connect.hide();
+            disconnect.hide();
+            accept_ssh_key.hide();
+
+            if (pubkey_b64) {
+                std::string content = "mailto:csr@walbrix.net?subject=authorization request&body=" + pubkey_b64.value();
+                qrcode = std::shared_ptr<QRcode>(QRcode_encodeString(content.c_str(), 0, QR_ECLEVEL_L, QR_MODE_8, 1), QRcode_free);
+            }
+        }
+    }
 
 };
 
