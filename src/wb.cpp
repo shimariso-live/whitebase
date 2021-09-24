@@ -351,6 +351,7 @@ static int create(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
     program.add_argument("--volume", "-v").help("Specify volume to create VM on").default_value(std::string("default"));
+    program.add_argument("--data-partition").help("Create uninitialized data partition with specified size in GiB").default_value(std::string("0"));
     program.add_argument("vmname").help("VM name");
     try {
         program.parse_args(args);
@@ -369,6 +370,8 @@ static int create(const std::vector<std::string>& args)
     }
 
     auto volume = program.get<std::string>("--volume");
+    auto data_partition = std::stoul(program.get<std::string>("--data-partition"));
+
     auto volume_dir = get_volume_dir(volume, [](auto name) -> std::filesystem::path {throw std::runtime_error("Volume " + name + " does not exist");});
     auto volume_vm_dir = volume_dir / vmname;
     if (std::filesystem::exists(volume_vm_dir)) {
@@ -379,6 +382,10 @@ static int create(const std::vector<std::string>& args)
         auto fs_dir = volume_vm_dir / "fs";
         std::filesystem::create_directories(fs_dir);
         check_call({"cp", "-a", "/usr/share/wb/stubvm/.", fs_dir.string()});
+        if (data_partition > 0) {
+            std::string size_str = std::to_string(data_partition) + "G";
+            check_call({"truncate", "-s", size_str, volume_vm_dir / "data"});
+        }
 
         auto _home = getenv("HOME");
         if (_home) {
