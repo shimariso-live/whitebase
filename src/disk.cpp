@@ -1,31 +1,35 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <sys/wait.h>
 
+#include <iostream>
 #include <filesystem>
 #include <functional>
 #include <set>
+#include <ext/stdio_filebuf.h> // for __gnu_cxx::stdio_filebuf
 
-#include <pstream.h>
-#define PICOJSON_USE_INT64
-#include <picojson.h>
-
+#include "common.h"
 #include "disk.h"
+#include "yajl_value.h"
 
-static Blockdevice obj2blockdevice(picojson::object& d)
+static Blockdevice obj2blockdevice(yajl_val _d)
 {
     Blockdevice device;
-    device.name = d["name"].get<std::string>();
-    device.pkname = d["pkname"].is<std::string>()? std::optional(d["pkname"].get<std::string>()) : std::nullopt;
-    device.type = d["type"].get<std::string>();
-    device.model = d["model"].is<std::string>()? std::optional(d["model"].get<std::string>()) : std::nullopt;
-    device.ro = d["ro"].get<bool>();
-    device.size = d["size"].get<int64_t>();
-    device.tran = d["tran"].is<std::string>()? std::optional(d["tran"].get<std::string>()) : std::nullopt;
-    device.log_sec = d["log-sec"].is<int64_t>()? std::optional(d["log-sec"].get<int64_t>()) : std::nullopt;
-    device.mountpoint = d["mountpoint"].is<std::string>()? std::optional(std::filesystem::path(d["mountpoint"].get<std::string>())) : std::nullopt;
 
-    auto maj_min = d["maj:min"].get<std::string>();
+    auto d = get<std::map<std::string,yajl_val>>(_d);
+
+    device.name = get<std::string>(d.at("name"));
+    device.pkname = get<std::optional<std::string>>(d.at("pkname"));
+    device.type = get<std::string>(d.at("type"));
+    device.model = get<std::optional<std::string>>(d.at("model"));
+    device.ro = get<bool>(d.at("ro"));
+    device.size = get<uint64_t>(d.at("size"));
+    device.tran = get<std::optional<std::string>>(d.at("tran"));
+    device.log_sec = get<std::optional<uint16_t>>(d.at("log-sec"));
+    device.mountpoint = get<std::optional<std::string>>(d.at("mountpoint"));
+
+    std::string maj_min = get<std::string>(d.at("maj:min"));
     auto colon = maj_min.find(':');
     if (colon == std::string::npos) std::runtime_error("Invalid maj:min string");
     //else
@@ -39,15 +43,27 @@ static Blockdevice obj2blockdevice(picojson::object& d)
 
 static bool for_each_blockdevice(std::function<bool(const Blockdevice&)> func)
 {
-    redi::pstream in("lsblk -b -n -l -J -o NAME,MODEL,TYPE,PKNAME,RO,MOUNTPOINT,SIZE,TRAN,LOG-SEC,MAJ:MIN");
-    if (in.fail()) throw std::runtime_error("Failed to execute lsblk");
-    // else
-    picojson::value v;
-    const std::string err = picojson::parse(v, in);
-    if (!err.empty()) throw std::runtime_error(err);
-    //else
-    for (auto& _d : v.get<picojson::object>()["blockdevices"].get<picojson::array>()) {
-        if (!func(obj2blockdevice(_d.get<picojson::object>()))) return false;
+    auto [pid, in] = forkinput([]() {
+        return exec({"lsblk", "-b", "-n", "-l", "-J", "-o", "NAME,MODEL,TYPE,PKNAME,RO,MOUNTPOINT,SIZE,TRAN,LOG-SEC,MAJ:MIN"});
+    });
+
+    std::stringstream buf;
+    {
+        __gnu_cxx::stdio_filebuf<char> filebuf(in, std::ios::in);
+        std::istream f(&filebuf);
+        buf << f.rdbuf();
+    }
+
+    char errorbuf[1024];
+    std::shared_ptr<yajl_val_s> tree(yajl_tree_parse(buf.str().c_str(), errorbuf, sizeof(errorbuf)), yajl_tree_free);
+    if (!tree) throw std::runtime_error(std::string("yajl_tree_parse() failed: ") + errorbuf);
+
+    int wstatus;
+    waitpid(pid, &wstatus, 0);
+    if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) throw std::runtime_error("lsblk exited abnoarmally");
+
+    for (auto val : get<std::vector<yajl_val>>(get(tree.get(), "blockdevices"))) {
+        if (!func(obj2blockdevice(val))) return false;
     }
     return true;
 };

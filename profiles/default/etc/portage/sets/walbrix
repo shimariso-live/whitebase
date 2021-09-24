@@ -89,7 +89,6 @@ net-misc/dropbear
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
 sys-firmware/bluez-firmware
-sci-geosciences/gpsd
 
 net-fs/samba
 net-analyzer/zabbix
@@ -97,9 +96,6 @@ net-analyzer/zabbix
 dev-libs/libvterm
 media-sound/alsa-utils
 dev-cpp/argparse
-dev-cpp/picojson
-dev-libs/poco
-dev-cpp/pstreams
 app-admin/ansible
 app-admin/logrotate
 
@@ -112,6 +108,7 @@ dev-python/requests # for rpmbootstrap
 
 # gtk4
 dev-cpp/gtkmm
+virtual/freedesktop-icon-theme
 
 # wb
 dev-libs/yajl
