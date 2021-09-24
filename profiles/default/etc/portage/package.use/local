@@ -31,18 +31,10 @@ sys-fs/lvm2 -readline systemd -thin udev
 net-misc/rsync xxhash
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
-app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen
-
-# xen
-app-emulation/xen efi
+app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen qemu_softmmu_targets_aarch64
 app-emulation/xen-tools -api -pygrub -xend -hvm -qemu -system-qemu -ocaml -python -ovmf -rombios -ipxe -pam -qemu-traditional
 sys-apps/kexec-tools lzma
-#sys-cluster/drbd-utils xen
-
-# xen's qemu
-#x11-libs/gtk+ X wayland
 x11-libs/cairo -X
-#media-libs/libglvnd X
 
 # wbui
 media-libs/freetype harfbuzz
@@ -52,9 +44,6 @@ dev-libs/weston -X desktop headless launch rdp resize-optimization suid systemd 
 net-misc/freerdp -ffmpeg
 media-libs/mesa -X wayland classic dri3 egl gallium gles1 gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
 x11-libs/libdrm video_cards_vmware
-media-libs/libsdl2 -X gles1 gles2 alsa wayland cpu_flags_x86_3dnow
-media-libs/sdl2-image jpeg png webp
-media-libs/sdl2-mixer mp3 vorbis
 
 # dev
 dev-vcs/git -perl -gpg -python
@@ -79,9 +68,6 @@ net-misc/openssh -bindist
 net-wireless/wpa_supplicant -bindist
 
 # hardware
-x11-base/xorg-drivers -input_devices_keyboard -input_devices_libinput -input_devices_mouse -video_cards_amdgpu -video_cards_dummy -video_cards_fbdev -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi -video_cards_vesa
-sci-geosciences/gpsd bluetooth ntp python usb gpsd_protocols_fury gpsd_protocols_geostar gpsd_protocols_nmea0183 gpsd_protocols_nmea2000 gpsd_protocols_passthrough -gpsd_protocols_isync -gpsd_protocols_ublox -gpsd_protocols_greis
-dev-python/pyserial
 net-misc/modemmanager mbim
 
 # strip python dependency
