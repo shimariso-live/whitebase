@@ -11,7 +11,7 @@
 
 #include "common.h"
 
-void exec(const std::vector<std::string>& cmdline)
+int exec(const std::vector<std::string>& cmdline)
 {
     if (cmdline.size() < 1) throw std::logic_error("cmdline too short");
     char ** argv = new char *[cmdline.size() + 1];
@@ -19,7 +19,7 @@ void exec(const std::vector<std::string>& cmdline)
         argv[i] = strdup(cmdline[i].c_str());
     }
     argv[cmdline.size()] = NULL;
-    if (execvp(cmdline[0].c_str(), argv) < 0) exit(-1);
+    return execvp(cmdline[0].c_str(), argv);
 }
 
 pid_t fork(std::function<void(void)> func)

@@ -11,7 +11,7 @@
 
 #include <yajl/yajl_tree.h>
 
-void exec(const std::vector<std::string>& cmdline);
+int exec(const std::vector<std::string>& cmdline);
 pid_t fork(std::function<void(void)> func);
 std::pair<pid_t,int> forkpty(std::function<void(void)> func,const std::optional<std::pair<unsigned short,unsigned short>>& winsiz = std::nullopt);
 std::pair<pid_t,int> forkinput(std::function<int(void)> func);
