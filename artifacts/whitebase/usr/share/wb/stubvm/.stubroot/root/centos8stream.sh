@@ -39,7 +39,7 @@ cd /mnt/boot
 ln -s */*/linux vmlinuz
 ln -s */*/initrd initramfs
 cd $oldpath
-chroot /mnt dnf install -y qemu-guest-agent
+chroot /mnt dnf install -y qemu-guest-agent https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
 chroot /mnt systemctl enable sshd avahi-daemon qemu-guest-agent
 
 umount /mnt/proc
