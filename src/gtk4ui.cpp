@@ -2,6 +2,7 @@
 #include <fstream>
 #include <filesystem>
 #include <thread>
+#include <ext/stdio_filebuf.h> // for __gnu_cxx::stdio_filebuf
 
 #include <unistd.h>
 #include <sys/reboot.h>
@@ -11,17 +12,22 @@
 #include <net/if.h>
 
 #include <glibmm.h>
+#include <gdk/gdk.h>
 #include <wayland-client.h>
 #include <qrencode.h>
+#include <iniparser4/iniparser.h>
 
 #include "terminal.h"
 #include "volume.h"
 #include "gtk4ui.h"
 #include "auth.h"
+#include "message_dialog_holder.h"
 #include "subprocess.h"
 #include "vm_op.h"
 #include "console.h"
+#include "update.h"
 #include "wg.h"
+#include "yajl_value.h"
 
 static const int WINDOW_WIDTH = 1024;
 static const int WINDOW_HEIGHT = 768;
@@ -208,9 +214,7 @@ public:
     }
 };
 
-class VMPage : public Gtk::Notebook {
-    Gtk::Window& parent;
-
+class VMPage : public Gtk::Notebook, MessageDialogHolder {
     Gtk::Stack list_and_operate, create_new;
     Gtk::Box box, buttons_box, console_box;
     Gtk::Label console_label;
@@ -219,10 +223,6 @@ class VMPage : public Gtk::Notebook {
     Gtk::Button reload, start, stop, force_stop, console, _delete, rename, create;
 
     Glib::RefPtr<Gtk::ListStore> vm_liststore;
-
-    std::unique_ptr<SubprocessDialog> subprocess_dialog;
-    std::unique_ptr<Gtk::MessageDialog> message_dialog;
-    std::unique_ptr<Gtk::MessageDialog> confirmation_dialog;
 
     pid_t console_pid;
     int console_fd;
@@ -244,7 +244,7 @@ class VMPage : public Gtk::Notebook {
     } columns;
 
 public:
-    VMPage(Gtk::Window& _parent) : parent(_parent), 
+    VMPage(Gtk::Window& _parent) : MessageDialogHolder(_parent), 
         console_pid(0), console_fd(-1),
         box(Gtk::Orientation::VERTICAL) , buttons_box(Gtk::Orientation::HORIZONTAL), console_box(Gtk::Orientation::VERTICAL),
         console_label("コンソールから抜けるには Ctrl+] を押してください"),
@@ -423,25 +423,15 @@ public:
         if (!_name) return;
         //else
         auto name = _name.value();
-        subprocess_dialog.reset(new SubprocessDialog(parent, "開始", false, true));
-        subprocess_dialog->run([name]() {
-            auto rst = call({"systemctl", "start", std::string("vm@") + name});
-            if (rst == 0 && !is_running(name)) rst = 1;
-            return rst;
-        }, [](int in, int out, auto set_status_string, auto set_progress) {
-            set_progress(-1);
-            set_status_string("処理中...");
-            char c;
-            while (int i = read(in, &c, 1) > 0) {;}
-        });
 
-        subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
-            std::pair<std::string, Gtk::MessageType> message_type = 
-                (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
-                    std::make_pair(name + "を開始しました", Gtk::MessageType::INFO) : std::make_pair(name + "を開始できませんでした", Gtk::MessageType::ERROR);
-            message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
-            message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
-            message_dialog->show();
+        show_message_dialog("仮想マシンを開始中...", [name]() {
+            return call({"systemctl", "start", std::string("vm@") + name}) == 0 && is_running(name);
+        }, [this,name]() {
+            show_message_dialog(name + "を開始しました", [this]() {
+                do_reload();
+            });
+        }, [this,name]() {
+            show_message_dialog(name + "を開始できませんでした", Gtk::MessageType::ERROR);
         });
     }
 
@@ -450,31 +440,18 @@ public:
         if (!_name) return;
         //else
         auto name = _name.value();
-        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を停止します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
-        confirmation_dialog->signal_response().connect([this,name](int res) {
-            if (res == Gtk::ResponseType::OK) {
-                subprocess_dialog.reset(new SubprocessDialog(parent, "停止", false, true));
-                subprocess_dialog->run([name]() {
-                    return call({"systemctl", "stop", std::string("vm@") + name}, true);
-                }, [](int in, int out, auto set_status_string, auto set_progress) {
-                    set_progress(-1);
-                    set_status_string("処理中...");
-                    char c;
-                    while (int i = read(in, &c, 1) > 0) {;}
-                });
 
-                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
-                    std::pair<std::string, Gtk::MessageType> message_type = 
-                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
-                            std::make_pair(name + "を停止しました", Gtk::MessageType::INFO) : std::make_pair(name + "を停止できませんでした", Gtk::MessageType::ERROR);
-                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
-                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
-                    message_dialog->show();
+        show_message_dialog(name + "に停止要求を送信します。よろしいですか？", [this,name]() {
+            if (call({"systemctl", "stop", "--no-block", std::string("vm@") + name}, true) == 0) {
+                show_message_dialog(name + "に停止要求を送信しました", [this]() {
+                    do_reload();
                 });
+            } else {
+                show_message_dialog(name + "に停止要求を送信できませんでした", Gtk::MessageType::ERROR);
             }
-            confirmation_dialog->hide();
+        }, []() {
+            // cancelled by user
         });
-        confirmation_dialog->show();
     }
 
     void on_click_force_stop() {
@@ -482,31 +459,18 @@ public:
         if (!_name) return;
         //else
         auto name = _name.value();
-        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を強制停止します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
-        confirmation_dialog->signal_response().connect([this,name](int res) {
-            if (res == Gtk::ResponseType::OK) {
-                subprocess_dialog.reset(new SubprocessDialog(parent, "強制停止", false, true));
-                subprocess_dialog->run([name]() {
-                    return call({"systemctl", "kill", std::string("vm@") + name}, true);
-                }, [](int in, int out, auto set_status_string, auto set_progress) {
-                    set_progress(-1);
-                    set_status_string("処理中...");
-                    char c;
-                    while (int i = read(in, &c, 1) > 0) {;}
-                });
 
-                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
-                    std::pair<std::string, Gtk::MessageType> message_type = 
-                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
-                            std::make_pair(name + "を強制停止しました", Gtk::MessageType::INFO) : std::make_pair(name + "を強制停止できませんでした", Gtk::MessageType::ERROR);
-                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
-                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
-                    message_dialog->show();
+        show_message_dialog(name + "を強制停止します。よろしいですか？", [this,name]() {
+            if (call({"systemctl", "kill", std::string("vm@") + name}, true) == 0) {
+                show_message_dialog(name + "を強制停止しました", [this]() {
+                    do_reload();
                 });
+            } else {
+                show_message_dialog(name + "を強制停止できませんでした", Gtk::MessageType::ERROR);
             }
-            confirmation_dialog->hide();
+        }, []() {
+            // cancelled by user
         });
-        confirmation_dialog->show();
     }
 
     void on_click_console() {
@@ -526,37 +490,18 @@ public:
         if (!_name) return;
         //else
         auto name = _name.value();
-        confirmation_dialog.reset(new Gtk::MessageDialog(parent, name + "を削除します。よろしいですか？", false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
-        confirmation_dialog->signal_response().connect([this,name](int res) {
-            if (res == Gtk::ResponseType::OK) {
-                subprocess_dialog.reset(new SubprocessDialog(parent, "削除", false, false));
-                subprocess_dialog->run([name]() {
-                    try {
-                        return delete_vm(name);
-                    }
-                    catch (const std::runtime_error& e) {
-                        std::cerr << e.what() << std::endl;
-                        return -1;
-                    }
-                }, [](int in, int out, auto set_status_string, auto set_progress) {
-                    set_progress(-1);
-                    set_status_string("処理中...");
-                    char c;
-                    while (int i = read(in, &c, 1) > 0) {;}
-                });
 
-                subprocess_dialog->signal_process_done().connect([this, name](int wstatus) {
-                    std::pair<std::string, Gtk::MessageType> message_type = 
-                        (WIFEXITED(wstatus) && WEXITSTATUS(wstatus) == 0)?
-                            std::make_pair(name + "を削除しました", Gtk::MessageType::INFO) : std::make_pair(name + "を削除できませんでした", Gtk::MessageType::ERROR);
-                    message_dialog.reset(new Gtk::MessageDialog(parent, message_type.first, false, message_type.second, Gtk::ButtonsType::OK, true));
-                    message_dialog->signal_response().connect([this](int) { message_dialog->hide(); do_reload(); });
-                    message_dialog->show();
+        show_message_dialog(name + "を削除します。よろしいですか？", [this,name]() {
+            if (delete_vm(name) == 0) {
+                show_message_dialog(name + "を削除しました", [this]() {
+                    do_reload();
                 });
+            } else {
+                show_message_dialog(name + "を削除できませんでした", Gtk::MessageType::ERROR);
             }
-            confirmation_dialog->hide();
+        }, []() {
+            // cancelled by user
         });
-        confirmation_dialog->show();
     }
 };
 
@@ -735,7 +680,65 @@ public:
     }
 };
 
-class SettingsPage : public Gtk::Box {
+class KeyboardSettings : public Gtk::Frame, MessageDialogHolder {
+    Gtk::Box inner;
+
+    Gtk::Label label;
+    Gtk::ComboBoxText selection;
+    Gtk::Button apply;
+
+    sigc::signal<void(std::string)> _signal_restart;
+public:
+    KeyboardSettings(Gtk::Window& parent) : MessageDialogHolder(parent), Gtk::Frame("キーボード設定"), inner(Gtk::Orientation::HORIZONTAL),
+        label("キーボードの種類"), apply("適用") {
+
+        label.set_margin_end(8);
+        inner.append(label);
+
+        selection.append("jp106", "日本語");
+        selection.append("", "英語");
+        selection.set_margin_end(8);
+        inner.append(selection);
+
+        apply.set_sensitive(false);
+        apply.signal_clicked().connect([this]() {
+            auto keymap = selection.get_active_id();
+            if (call({"localectl", "set-keymap", keymap}) == 0) {
+                apply.set_sensitive(false);
+                _signal_restart("設定変更を反映するためにログアウトしますか？");
+            } else {
+                show_message_dialog("キーボード設定を変更できませんでした(localectl)", Gtk::MessageType::ERROR);
+            }
+        });
+        inner.append(apply);
+
+        set_hexpand();
+        set_vexpand(false);
+        set_child(inner);
+    }
+
+    virtual void on_realize() {
+        Gtk::Frame::on_realize();
+        auto weston_config_file = getenv("WESTON_CONFIG_FILE");
+        std::string keymap_layout = "";
+        if (weston_config_file && std::filesystem::exists(weston_config_file)) {
+            std::shared_ptr<dictionary> ini(iniparser_load(weston_config_file), iniparser_freedict);
+            keymap_layout = iniparser_getstring(ini.get(), "keyboard:keymap_layout", "");
+        }
+        std::map<std::string,std::string> keymap_layout_to_model = {
+            {"jp", "jp106"}
+        };
+        selection.set_active_id(keymap_layout_to_model[keymap_layout]);
+        selection.signal_changed().connect([this]() { // must be after setting first selection
+            apply.set_sensitive(true);
+        });
+    }
+
+    sigc::signal<void(std::string)> signal_restart() { return _signal_restart; }
+};
+
+class CentralServer : public Gtk::Frame, MessageDialogHolder {
+    Gtk::Box inner;
     Gtk::Box status_header;
     Gtk::Label status_label;
     Gtk::DrawingArea qrcode_area;
@@ -743,8 +746,13 @@ class SettingsPage : public Gtk::Box {
     std::optional<std::string> pubkey_b64;
     Gtk::Button reload_button, connect, disconnect;
     Gtk::CheckButton accept_ssh_key;
+
+    struct {
+        int status;
+        std::optional<std::string> pubkey_b64;
+    } async_result;
 public:
-    SettingsPage() : Gtk::Box(Gtk::Orientation::VERTICAL), 
+    CentralServer(Gtk::Window& parent) : MessageDialogHolder(parent), Gtk::Frame("中央サーバー"), inner(Gtk::Orientation::VERTICAL),
         status_header(Gtk::Orientation::HORIZONTAL),
         reload_button("最新の情報に更新(_R)", true), 
         connect("中央サーバへ接続する(_C)", true), disconnect("中央サーバから切断する(_D)", true), 
@@ -754,9 +762,7 @@ public:
         status_header.append(status_label);
         status_header.append(reload_button);
 
-        reload_button.signal_clicked().connect([this]() {
-            reload();
-        });
+        reload_button.signal_clicked().connect([this]() { reload(); });
 
         qrcode_area.set_expand();
         qrcode_area.set_draw_func([this](const Cairo::RefPtr<Cairo::Context>& cairo, int width, int height) {
@@ -801,53 +807,263 @@ public:
             }
         });
 
-        append(status_header);
-        append(qrcode_area);
-        append(accept_ssh_key);
-        append(connect);
-        append(disconnect);
-    }
-
-    virtual void on_realize()
-    {
-        Gtk::Box::on_realize();
-        reload();
+        set_expand();
+        set_child(inner);
+        inner.append(status_header);
+        inner.append(qrcode_area);
+        inner.append(accept_ssh_key);
+        inner.append(connect);
+        inner.append(disconnect);
     }
 
     void reload() {
-        try {
-            pubkey_b64 = get_pubkey_b64();
-        }
-        catch (const std::runtime_error& e) {
-            std::cerr << e.what() << std::endl;
-        }
-
-        if (call({"systemctl", "is-active", "wg-quick@wg-walbrix"}) == 0) {
-            status_label.set_text("中央サーバへ接続済みです");
-            qrcode_area.hide();
-            connect.hide();
-            disconnect.show();
-            accept_ssh_key.hide();
-        } else if (pubkey_b64 && call({"curl", "-I", "-f", get_authorization_url(pubkey_b64.value())}) == 0) {
-            status_label.set_text("中央サーバへの接続承認が完了しています。");
-            qrcode_area.hide();
-            connect.show();
-            disconnect.hide();
-            accept_ssh_key.show();
-        } else {
-            status_label.set_text("中央サーバへの接続承認を受けるには下記のQRコードを読み取って承認依頼メールを送信してください。\n接続が承認されたら「最新の情報に更新」を押して接続処理へ進みます");
-            qrcode_area.show();
-            connect.hide();
-            disconnect.hide();
-            accept_ssh_key.hide();
-
-            if (pubkey_b64) {
-                std::string content = "mailto:csr@walbrix.net?subject=authorization request&body=" + pubkey_b64.value();
-                qrcode = std::shared_ptr<QRcode>(QRcode_encodeString(content.c_str(), 0, QR_ECLEVEL_L, QR_MODE_8, 1), QRcode_free);
+        show_message_dialog("読み込み中...", [this](){
+            async_result.status = 0;
+            try {
+                async_result.pubkey_b64 = get_pubkey_b64();
             }
-        }
+            catch (const std::runtime_error& e) {
+                std::cerr << e.what() << std::endl;
+            }
+            if (call({"systemctl", "is-active", "wg-quick@wg-walbrix"}) == 0) async_result.status = 2;
+            else if (async_result.pubkey_b64 && get_content_length(get_authorization_url(async_result.pubkey_b64.value()))) async_result.status = 1;
+            return true;
+        }, [this](){
+            pubkey_b64 = async_result.pubkey_b64;
+            if (async_result.status == 0/*not even authorized*/) {
+                status_label.set_text("中央サーバへの接続承認を受けるには下記のQRコードを\n読み取って承認依頼メールを送信してください。\n接続が承認されたら「最新の情報に更新」を押して\n接続処理へ進みます");
+                qrcode_area.show();
+                connect.hide();
+                disconnect.hide();
+                accept_ssh_key.hide();
+
+                if (pubkey_b64) {
+                    std::string content = "mailto:csr@walbrix.net?subject=authorization request&body=" + pubkey_b64.value();
+                    qrcode = std::shared_ptr<QRcode>(QRcode_encodeString(content.c_str(), 0, QR_ECLEVEL_L, QR_MODE_8, 1), QRcode_free);
+                }
+            } else if (async_result.status == 1/*authorized but not connected*/) {
+                status_label.set_text("中央サーバへの接続承認が完了しています。");
+                qrcode_area.hide();
+                connect.show();
+                disconnect.hide();
+                accept_ssh_key.show();
+            } else {// connected
+                status_label.set_text("中央サーバへ接続済みです");
+                qrcode_area.hide();
+                connect.hide();
+                disconnect.show();
+                accept_ssh_key.hide();
+            }
+        }, [this](){
+            show_message_dialog("中央サーバへの接続ステータスチェックに失敗しました", Gtk::MessageType::ERROR);
+        });
     }
 
+    virtual void on_realize() {
+        Gtk::Frame::on_realize();
+        reload();
+    }
+};
+
+class SoftwareUpdate : public Gtk::Frame, MessageDialogHolder{
+    Gtk::Box inner;
+    Gtk::Grid grid;
+    Gtk::Button download_button;
+    Gtk::CheckButton include_unstable;
+
+    Gtk::Label present_version_label, present_version_value;
+    Gtk::Label downloaded_version_label, downloaded_version_value;
+    Gtk::Label available_version_label, available_version_value;
+
+    Gtk::Label need_reboot;
+
+    std::optional<std::tuple<std::string,std::string,size_t>> available_version;
+
+    struct {
+        std::optional<std::string> present_version;
+        std::optional<std::string> downloaded_version;
+        std::optional<std::tuple<std::string,std::string,size_t>> available_version;
+    } async_result;
+
+    bool postpone_reboot;
+
+    sigc::signal<void(std::string)> _signal_reboot;
+public:
+    SoftwareUpdate(Gtk::Window& parent) : MessageDialogHolder(parent), Gtk::Frame("ソフトウェア更新"), inner(Gtk::Orientation::VERTICAL), 
+        present_version_label("現在稼働中のバージョン"), downloaded_version_label("ダウンロード済みのバージョン"), available_version_label("利用可能なバージョン"),
+        download_button("ダウンロード(_L)", true), include_unstable("未テストのバージョンも含める", true), 
+        need_reboot("ダウンロード済みバージョンを有効にするにはシステムを再起動してください"), postpone_reboot(false) {
+
+        // setup grid
+        std::vector<std::pair<Gtk::Label&,Gtk::Widget&>> grid_labels({
+            {present_version_label, present_version_value}, 
+            {downloaded_version_label, downloaded_version_value}, 
+            {available_version_label, available_version_value}
+        });
+        int row = 0;
+        for (const auto& i : grid_labels) {
+            i.first.set_margin(4);
+            i.first.set_margin_end(16);
+            grid.attach(i.first, 0, row);
+            i.second.set_halign(Gtk::Align::START);
+            grid.attach(i.second, 1, row++);
+        }
+
+        inner.append(grid);
+
+        include_unstable.signal_toggled().connect([this]() {
+            reload();
+        }, true);
+
+        inner.append(include_unstable);
+        inner.append(download_button);
+        download_button.set_sensitive(false);
+        download_button.signal_clicked().connect([this]() {
+            download();
+        });
+        inner.append(need_reboot);
+        need_reboot.hide();
+        set_expand();
+        set_child(inner);
+    }
+
+    static bool left_version_newer_than_right(const std::string& left, const std::string& right) {
+        auto parse_version = [](const std::string& version_str) -> std::tuple<int,int,int,int> {
+            int maj = 0, min = 0, rel = 0, rev = 0;
+            try {
+                auto dot1 = version_str.find_first_of('.');
+                if (dot1 != version_str.npos) {
+                    maj = std::stoi(version_str.substr(0, dot1));
+                    auto dot2 = version_str.find_first_of('.', dot1 + 1);
+                    if (dot2 != version_str.npos) {
+                        min = std::stoi(version_str.substr(dot1 + 1, dot2 - dot1 - 1));
+                        auto dash = version_str.find_first_of("-r", dot2 + 1);
+                        if (dash != version_str.npos) {
+                            rel = std::stoi(version_str.substr(dot2 + 1, dash - dot2 - 1));
+                            rev = std::stoi(version_str.substr(dash + 2));
+                        } else {
+                            rel = std::stoi(version_str.substr(dot2 + 1));
+                        }
+                    }
+                }
+            }
+            catch (const std::logic_error& e) {
+                // abandon further parse
+            }
+            return {maj, min, rel, rev};
+        };
+
+        if (left == "HEAD") return true;
+
+        auto left_parsed = parse_version(left);
+        auto right_parsed = parse_version(right);
+
+        if (std::get<0>(left_parsed) > std::get<0>(right_parsed)) return true;
+        //else
+        if (std::get<0>(left_parsed) < std::get<0>(right_parsed)) return false;
+        //else
+        if (std::get<1>(left_parsed) > std::get<1>(right_parsed)) return true;
+        //else
+        if (std::get<1>(left_parsed) < std::get<1>(right_parsed)) return false;
+        //else
+        if (std::get<2>(left_parsed) > std::get<2>(right_parsed)) return true;
+        //else
+        if (std::get<2>(left_parsed) < std::get<2>(right_parsed)) return false;
+        //else
+        if (std::get<3>(left_parsed) > std::get<3>(right_parsed)) return true;
+        //else
+        return false;
+    }
+
+    void reload() {
+        show_message_dialog("ソフトウェアの更新版を確認中...", [this]() {
+            try {
+                async_result.present_version = get_present_version();
+                if (get_present_system_image_path() != system_img) {
+                    async_result.downloaded_version = get_version_from_system_image_file(system_img);
+                }
+                async_result.available_version = get_latest_version(include_unstable.get_active());
+            }
+            catch (const std::runtime_error& e) {
+                std::cerr << e.what() << std::endl;
+                return false;
+            }
+            return true;
+        }, [this]() {
+            present_version_value.set_text(async_result.present_version.value_or("-"));
+            downloaded_version_value.set_text(async_result.downloaded_version.value_or("-"));
+            available_version_value.set_text(
+                async_result.available_version? 
+                    (std::get<0>(async_result.available_version.value()) + " (" + human_readable(std::get<2>(async_result.available_version.value())) + "B)")
+                    : "-");
+            if (async_result.downloaded_version) need_reboot.show();
+            bool enable_download = false;
+            if (async_result.available_version) {
+                available_version = async_result.available_version;
+                const auto& av = std::get<0>(available_version.value());
+                if (!async_result.present_version && !async_result.downloaded_version) enable_download = true;
+                if (async_result.present_version && left_version_newer_than_right(av, async_result.present_version.value())) enable_download = true;
+                if (async_result.downloaded_version && left_version_newer_than_right(av, async_result.downloaded_version.value())) enable_download = true;
+            }
+            download_button.set_sensitive(enable_download);
+
+            if (async_result.downloaded_version) {
+                if (!postpone_reboot) _signal_reboot("新しいバージョンを有効にするため再起動しますか？");
+                postpone_reboot = true;
+            }
+        }, [this]() {
+            show_message_dialog("ソフトウェアの更新版チェックに失敗しました", Gtk::MessageType::ERROR);
+        });
+    }
+
+    void download() {
+        if (!available_version) return;
+        auto size = human_readable(std::get<2>(available_version.value())) + "B";
+        auto version = std::get<0>(available_version.value());
+        show_message_dialog("バージョン " + version + " (" + size + ")をダウンロード中...", [this](std::stop_token st, std::function<void(double)> progress) {
+            BootPartitionLock lock(true/*nonblocking*/);
+            if (!lock) return false;
+            //else
+            return download_system_image(std::get<1>(available_version.value()), std::get<2>(available_version.value()), st, progress);
+        }, [this]() {
+            postpone_reboot = false;
+            reload();
+        }, [this]() {
+            show_message_dialog("ダウンロードが中断されました", Gtk::MessageType::WARNING);
+        });
+    }
+
+    virtual void on_realize() {
+        Gtk::Frame::on_realize();
+        reload();
+    }
+
+    sigc::signal<void(std::string)> signal_reboot() { return _signal_reboot; }
+};
+
+class SettingsPage : public Gtk::Box {
+    Gtk::Box vbox_left, vbox_right;
+    KeyboardSettings keyboard_settings;
+    CentralServer central_server;
+    SoftwareUpdate software_update;
+    sigc::signal<void(std::string,bool)> _signal_reboot;
+public:
+    SettingsPage(Gtk::Window& parent) : keyboard_settings(parent), central_server(parent), software_update(parent), 
+        Gtk::Box(Gtk::Orientation::HORIZONTAL), vbox_left(Gtk::Orientation::VERTICAL), vbox_right(Gtk::Orientation::VERTICAL) {
+
+        keyboard_settings.signal_restart().connect([this](std::string message) {
+            _signal_reboot(message, false);
+        });
+        vbox_left.append(keyboard_settings);
+        append(vbox_left);
+        vbox_right.append(central_server);
+        software_update.signal_reboot().connect([this](std::string message) {
+            _signal_reboot(message, true);
+        });
+        vbox_right.append(software_update);
+        append(vbox_right);
+    }
+    sigc::signal<void(std::string,bool)> signal_reboot() { return _signal_reboot; }
 };
 
 class ShutdownPage : public Gtk::Box {
@@ -910,12 +1126,14 @@ public:
     }
 };
 
-class MainWindow : public Gtk::Window
+class MainWindow : public Gtk::Window, MessageDialogHolder
 {
     HeaderPicture header;
     FooterPicture footer;
     Gtk::Stack m_stack;
     Gtk::StackSidebar m_sidebar;
+    Gtk::Overlay overlay;
+    Gtk::Spinner spinner;
     Gtk::Box m_box, m_sidebar_stack_box;
 
     StatusPage m_status_page;
@@ -924,15 +1142,13 @@ class MainWindow : public Gtk::Window
     ConsolePage m_console_page;
     SettingsPage m_settings_page;
     ShutdownPage m_shutdown_page;
-
-    std::unique_ptr<Gtk::MessageDialog> m_pDialog;
-
-    std::unique_ptr<Gtk::Window> m_pMainWindow;
 public:
     MainWindow(bool login = false);
+    virtual void on_enter_async_job();
+    virtual void on_leave_async_job();
 };
 
-MainWindow::MainWindow(bool login) : m_vm_page(*this), m_shutdown_page(login), m_box(Gtk::Orientation::VERTICAL), m_sidebar_stack_box(Gtk::Orientation::HORIZONTAL)
+MainWindow::MainWindow(bool login) : MessageDialogHolder((Gtk::Window&)*this), m_vm_page(*this), m_settings_page(*this), m_shutdown_page(login), m_box(Gtk::Orientation::VERTICAL), m_sidebar_stack_box(Gtk::Orientation::HORIZONTAL)
 {
     set_default_size(WINDOW_WIDTH, WINDOW_HEIGHT);
 
@@ -952,29 +1168,49 @@ MainWindow::MainWindow(bool login) : m_vm_page(*this), m_shutdown_page(login), m
     m_status_page.set_focusable(false);
 
     m_shutdown_page.signal_quit().connect([this](int _shutdown_cmd) {
-        auto message = (_shutdown_cmd == 1)? "システムをシャットダウンします。よろしいですか？" : "システムを再起動します。よろしいですか？";
         if (_shutdown_cmd > 0) {
-            m_pDialog.reset(new Gtk::MessageDialog(*this, message, false, Gtk::MessageType::WARNING, Gtk::ButtonsType::OK_CANCEL, true));
-            m_pDialog->set_hide_on_close(true);
-            m_pDialog->signal_response().connect([this,_shutdown_cmd](int res){
-                m_pDialog->hide();
-                if (res == Gtk::ResponseType::OK) {
-                    shutdown_cmd = _shutdown_cmd;
-                    close();
-                }
-            });
-            m_pDialog->show();
+            auto message = (_shutdown_cmd == 1)? "システムをシャットダウンします。よろしいですか？" : "システムを再起動します。よろしいですか？";
+            show_message_dialog(message, [this, _shutdown_cmd](){
+                shutdown_cmd = _shutdown_cmd;
+                close();
+            }, [](){
+                // cancelled
+            }, Gtk::MessageType::WARNING);
         } else {
             close();
         }
     });
 
+    m_settings_page.signal_reboot().connect([this](std::string message, bool hard) {
+        show_message_dialog(message, [this,hard](){
+            shutdown_cmd = hard? 2/*reboot*/:3/*just restart ui*/;
+            close();
+        }, [](){
+            // cancelled
+        }, Gtk::MessageType::WARNING, Gtk::ButtonsType::YES_NO);
+    });
 
     m_box.append(header);
     m_box.append(m_sidebar_stack_box);
     m_box.append(footer);
 
-    set_child(m_box);
+    overlay.set_child(m_box);
+    spinner.set_expand(false);
+    set_child(overlay);
+}
+
+void MainWindow::on_enter_async_job()
+{
+    overlay.add_overlay(spinner);
+    spinner.start();
+    m_box.set_sensitive(false);
+}
+
+void MainWindow::on_leave_async_job()
+{
+    spinner.stop();
+    overlay.remove_overlay(spinner);
+    m_box.set_sensitive(true);
 }
 
 class InstallerWindow : public Gtk::Window {
@@ -1001,12 +1237,26 @@ static const char* app_name = "com.walbrix.wb";
 
 int gtk4installer(const std::vector<std::string>& args)
 {
-    return Gtk::Application::create(app_name)->make_window_and_run<InstallerWindow>(0, nullptr);
+    auto rst = Gtk::Application::create(app_name)->make_window_and_run<InstallerWindow>(0, nullptr);
+    if (shutdown_cmd == 1) {
+        rst = call({"/bin/systemctl", "poweroff"});
+    } else if (shutdown_cmd == 2) {
+        rst = call({"/bin/systemctl", "reboot"});
+    }
+    // 0, 3: just quit
+    return rst;
 }
 
 int gtk4ui(const std::vector<std::string>& args)
 {
-    return Gtk::Application::create(app_name)->make_window_and_run<MainWindow>(0, nullptr, false);
+    auto rst = Gtk::Application::create(app_name)->make_window_and_run<MainWindow>(0, nullptr, false);
+    if (shutdown_cmd == 1) {
+        rst = call({"/bin/systemctl", "poweroff"});
+    } else if (shutdown_cmd == 2) {
+        rst = call({"/bin/systemctl", "reboot"});
+    }
+    // 0, 3: just quit
+    return rst;
 }
 
 static bool ping()
@@ -1074,6 +1324,7 @@ int gtk4login(const std::vector<std::string>& args)
     } else if (shutdown_cmd == 2) {
         rst = call({"/bin/systemctl", "reboot"});
     }
+    // 3 : just restart ui
     return rst;
 }
 

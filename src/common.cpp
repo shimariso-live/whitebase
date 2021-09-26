@@ -9,6 +9,7 @@
 #include <sys/un.h>
 #include <sys/stat.h>
 
+#include <curl/curl.h>
 #include "common.h"
 
 int exec(const std::vector<std::string>& cmdline)
@@ -255,4 +256,63 @@ std::string human_readable(uint64_t size)
     }
     sprintf(buf, "%.1f%c", s, au);
     return std::string(buf);
+}
+
+static size_t load_json_callback(char *buffer, size_t size, size_t nmemb, void *f)
+{
+    auto& buf = *((std::pair<std::string,size_t>*)f);
+    if (buf.first.length() + size * nmemb > buf.second) return 0; // tell curl to stop download(causes CURLE_WRITE_ERROR)
+    buf.first += std::string(buffer, size * nmemb);
+    return size * nmemb;
+}
+
+std::shared_ptr<yajl_val_s> load_json(const std::string& url, size_t limit/* = 1024 * 1024*/)
+{
+    std::pair<std::string,size_t> buf("", limit);
+    std::shared_ptr<CURL> curl(curl_easy_init(), curl_easy_cleanup);
+    curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, load_json_callback);
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &buf);    
+    auto res = curl_easy_perform(curl.get());
+    if (res != CURLE_OK) {
+        if (res == CURLE_WRITE_ERROR) {
+            throw std::runtime_error("CURLE_WRITE_ERROR: Content size limit exceeded?");
+        } else {
+            throw std::runtime_error(std::string(curl_easy_strerror(res)) + "(" + std::to_string(res) + ")");
+        }
+    }
+    long http_code = 0;
+    curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &http_code);
+    char *ct = nullptr;
+    res = curl_easy_getinfo(curl.get(), CURLINFO_CONTENT_TYPE, &ct);
+    if (res != CURLE_OK) throw std::runtime_error(curl_easy_strerror(res));
+    std::optional<std::string> content_type = ct? std::make_optional(ct) : std::nullopt;
+
+    // check status code and content type
+    if (http_code != 200) {
+        throw std::runtime_error("HTTP status other than 200 OK received: status code=" + std::to_string(http_code));
+    }
+    if (content_type != "application/json") {
+        throw std::runtime_error("Not application/json: "  + content_type.value_or("N/A"));
+    }
+    // parse json
+    char errorbuf[1024];    
+    std::shared_ptr<yajl_val_s> tree(yajl_tree_parse(buf.first.c_str(), errorbuf, sizeof(errorbuf)), yajl_tree_free);
+    if (!tree) throw std::runtime_error(std::string("yajl_tree_parse() failed: ") + errorbuf);
+    return tree;
+}
+
+std::optional<size_t> get_content_length(const std::string& url)
+{
+    std::shared_ptr<CURL> curl(curl_easy_init(), curl_easy_cleanup);
+    curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl.get(), CURLOPT_NOBODY, 1L);
+    if (curl_easy_perform(curl.get()) != CURLE_OK) return std::nullopt;
+    long http_code = 0;
+    if (curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &http_code) != CURLE_OK) return std::nullopt;
+    if (http_code != 200) return std::nullopt;
+
+    curl_off_t cl;
+    if (curl_easy_getinfo(curl.get(), CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &cl) != CURLE_OK) return std::nullopt;
+    return cl;
 }

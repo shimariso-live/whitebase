@@ -21,6 +21,8 @@ int listen_unix_socket(const std::filesystem::path& socket_path, int backlog = 1
 int connect_unix_socket(const std::filesystem::path& socket_path);
 int write(int fd, const std::string& str);
 std::string human_readable(uint64_t size);
+std::shared_ptr<yajl_val_s> load_json(const std::string& url, size_t limit = 1024 * 1024);
+std::optional<size_t> get_content_length(const std::string& url);
 
 template <typename T> T with_socket(const std::filesystem::path& socket_path,std::function<T(int)> func)
 {
