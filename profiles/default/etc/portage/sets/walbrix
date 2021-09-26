@@ -113,4 +113,5 @@ virtual/freedesktop-icon-theme
 # wb
 dev-libs/yajl
 media-gfx/qrencode
+sys-apps/busybox
 
