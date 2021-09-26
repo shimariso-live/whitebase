@@ -1235,30 +1235,6 @@ public:
 
 static const char* app_name = "com.walbrix.wb";
 
-int gtk4installer(const std::vector<std::string>& args)
-{
-    auto rst = Gtk::Application::create(app_name)->make_window_and_run<InstallerWindow>(0, nullptr);
-    if (shutdown_cmd == 1) {
-        rst = call({"/bin/systemctl", "poweroff"});
-    } else if (shutdown_cmd == 2) {
-        rst = call({"/bin/systemctl", "reboot"});
-    }
-    // 0, 3: just quit
-    return rst;
-}
-
-int gtk4ui(const std::vector<std::string>& args)
-{
-    auto rst = Gtk::Application::create(app_name)->make_window_and_run<MainWindow>(0, nullptr, false);
-    if (shutdown_cmd == 1) {
-        rst = call({"/bin/systemctl", "poweroff"});
-    } else if (shutdown_cmd == 2) {
-        rst = call({"/bin/systemctl", "reboot"});
-    }
-    // 0, 3: just quit
-    return rst;
-}
-
 static bool ping()
 {
     std::shared_ptr<wl_display> display(wl_display_connect(NULL), wl_display_disconnect);
@@ -1281,6 +1257,42 @@ static bool ping()
     wl_display_roundtrip(display.get());
 
     return output;
+}
+
+int gtk4installer(const std::vector<std::string>& args)
+{
+    try {
+        while (!ping()) {
+            sleep(1);
+        }
+    }
+    catch (const std::exception& ex) {
+        ;
+    }
+    auto rst = Gtk::Application::create(app_name)->make_window_and_run<InstallerWindow>(0, nullptr);
+    if (shutdown_cmd == 1) {
+        rst = call({"/bin/systemctl", "poweroff"});
+    } else if (shutdown_cmd == 2) {
+        {
+            std::ofstream f("/run/initramfs/eject");
+            if (f) f << "do eject" << std::endl;
+        }
+        rst = call({"/bin/systemctl", "reboot"});
+    }
+    // 0, 3: just quit
+    return rst;
+}
+
+int gtk4ui(const std::vector<std::string>& args)
+{
+    auto rst = Gtk::Application::create(app_name)->make_window_and_run<MainWindow>(0, nullptr, false);
+    if (shutdown_cmd == 1) {
+        rst = call({"/bin/systemctl", "poweroff"});
+    } else if (shutdown_cmd == 2) {
+        rst = call({"/bin/systemctl", "reboot"});
+    }
+    // 0, 3: just quit
+    return rst;
 }
 
 int gtk4login(const std::vector<std::string>& args)
