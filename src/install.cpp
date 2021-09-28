@@ -17,6 +17,7 @@
 #include <argparse/argparse.hpp>
 
 #include "disk.h"
+#include "install.h"
 #include "messages.h"
 
 static void exec_command(const std::string& cmd, const std::vector<std::string>& args)
@@ -144,10 +145,14 @@ static std::optional<std::string> get_partition_uuid(const std::filesystem::path
   return rst;
 }
 
-static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_t log_sec, const std::map<std::string,std::string>& grub_vars = {})
+bool do_install(const std::filesystem::path& disk, uint64_t size, uint16_t log_sec, const std::map<std::string,std::string>& grub_vars/*={}*/, 
+    std::stop_token st/* = std::stop_token()*/, std::function<void(double)> progress/* = [](double){}*/)
 {
     std::cout << MSG("Stopping LVM") << std::endl;
     exec_command("vgchange", {"-an"});
+
+    progress(0.01);
+    if (st.stop_requested()) return false;
 
     std::vector<std::string> parted_args = {"--script", disk.string()};
     bool bios_compatible = (size <= 2199023255552L/*2TiB*/ && log_sec == 512);
@@ -166,11 +171,14 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         parted_args.push_back("set 1 esp on");
     }
 
-    std::cout << MSG("Creating partisions...");
+    std::cout << MSG("Creating partitions...");
     std::flush(std::cout);
     exec_command("parted", parted_args);
     exec_command("udevadm", {"settle"});
     std::cout << MSG("Done") << std::endl;
+
+    progress(0.03);
+    if (st.stop_requested()) return false;
 
     auto _boot_partition = get_partition(disk, 1);
     if (!_boot_partition) {
@@ -183,10 +191,17 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
     std::cout << MSG("Formatting boot partition with FAT32") << std::endl;
     exec_command("mkfs.vfat",{"-F","32",boot_partition});
 
+    progress(0.05);
+    if (st.stop_requested()) return false;
+
     std::cout << MSG("Mouning boot partition...");
     std::flush(std::cout);
-    with_tempmount<bool>(boot_partition, "vfat", MS_RELATIME, "fmask=177,dmask=077", [&disk,&grub_vars,bios_compatible](auto mnt) {
+    bool done = with_tempmount<bool>(boot_partition, "vfat", MS_RELATIME, "fmask=177,dmask=077", [&disk,&grub_vars,bios_compatible,&st,&progress](auto mnt) {
         std::cout << MSG("Done") << std::endl;
+
+        progress(0.07);
+        if (st.stop_requested()) return false;
+
         std::cout << MSG("Installing UEFI bootloader") << std::endl;
         auto efi_boot = mnt / "efi/boot";
         std::filesystem::create_directories(efi_boot);
@@ -202,6 +217,10 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         } else {
             std::cout << MSG("This system will be UEFI-only as this disk cannot be treated by BIOS") << std::endl;
         }
+
+        progress(0.09);
+        if (st.stop_requested()) return false;
+
         auto grub_dir = mnt / "boot/grub";
         std::filesystem::create_directories(grub_dir);
         std::cout << MSG("Creating boot configuration file") << std::endl;
@@ -222,6 +241,9 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
             }
         }
 
+        progress(0.10);
+        if (st.stop_requested()) return false;
+
         std::cout << MSG("Copying system file") << std::endl;
         std::filesystem::path run_initramfs_boot("/run/initramfs/boot");
         char buf[128 * 1024];
@@ -237,7 +259,12 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
         size_t r;
         size_t cnt = 0;
         uint8_t percentage = 0;
+        bool done = true;
         do {
+            if (st.stop_requested()) {
+                done = false;
+                break;
+            }
             r = fread(buf, 1, sizeof(buf), f1);
             fwrite(buf, 1, r, f2);
             fflush(f2);
@@ -250,16 +277,22 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
                 std::cout << '\r' << MSG("Copying...") << (int)percentage << "%";
                 std::flush(std::cout);
             }
+            progress((double)cnt / statbuf.st_size * 0.8 + 0.1);
         } while (r == sizeof(buf));
         std::cout << std::endl;
         fclose(f1);
         fclose(f2);
         std::cout << MSG("Unmounting boot partition...");
         std::flush(std::cout);
-        return true;
+        return done;
     });
     std::cout << MSG("Done") << std::endl;
-    
+    if (!done) return false;
+    //else
+
+    progress(0.90);
+    if (st.stop_requested()) return false;
+
     if (has_secondary_partition) {
         std::cout << MSG("Constructing data area") << std::endl;
         auto secondary_partition = get_partition(disk, 2);
@@ -279,7 +312,9 @@ static void do_install(const std::filesystem::path& disk, uint64_t size, uint16_
             std::cout << MSG("Warning: Unable to determine partition for data area. Data area won't be created") << std::endl;
         }
     }
+    progress(1.00);
 
+    return true;
 }
 
 int install_cmdline(const std::vector<std::string>& args)

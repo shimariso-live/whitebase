@@ -30,12 +30,23 @@ make
 make install
 
 # setup stubvm
+STUBVM=/usr/share/wb/stubvm
+STUBROOT=$STUBVM/.stubroot
+
+# init
+mkdir -p $STUBVM/etc
+gcc -static -o $STUBVM/etc/init /usr/src/stubinit.c
+
+# kernel
+mkdir -p $STUBVM/boot
+cp /boot/kernel $STUBVM/boot/kernel
+
 # llmnrd
-mkdir -p /usr/share/wb/stubvm/.stubroot/sbin /tmp/llmnrd
+mkdir -p $STUBROOT/sbin /tmp/llmnrd
 download https://github.com/tklauser/llmnrd/archive/refs/tags/v0.7.tar.gz > /usr/share/wb/stubvm/.stubroot/sbin/llmnrd.src.tar.gz
-tar xf /usr/share/wb/stubvm/.stubroot/sbin/llmnrd.src.tar.gz --strip-components=1 -C /tmp/llmnrd
+tar xf $STUBROOT/sbin/llmnrd.src.tar.gz --strip-components=1 -C /tmp/llmnrd
 cd /tmp/llmnrd
-gcc -static -o /usr/share/wb/stubvm/.stubroot/sbin/llmnrd -DVERSION_STRING="\"v`egrep '^VERSION = ' Makefile | sed 's/.*= //'`\"" -DGIT_VERSION='""' -DPIDFILE='"/run/llmnrd.pid"' llmnr.c iface.c socket.c util.c log.c llmnrd.c
+gcc -static -o $STUBROOT/sbin/llmnrd -DVERSION_STRING="\"v`egrep '^VERSION = ' Makefile | sed 's/.*= //'`\"" -DGIT_VERSION='""' -DPIDFILE='"/run/llmnrd.pid"' llmnr.c iface.c socket.c util.c log.c llmnrd.c
 
 # dropbear, qemu-ga, nss
 LIBDIR=/lib64
@@ -44,9 +55,8 @@ if [ ! -d /lib64 ]; then
 fi
 
 # setup stubroot
-STUBROOT=/usr/share/wb/stubvm/.stubroot
-lddtree -l /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
-echo -e '/bin/busybox\n/sbin/ldconfig\n/usr/share/udhcpc/default.script' >> /tmp/stubroot-files
+lddtree -l /bin/busybox /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
+echo -e '/sbin/ldconfig\n/usr/share/udhcpc/default.script' >> /tmp/stubroot-files
 rsync -L --files-from=/tmp/stubroot-files / $STUBROOT
 
 # debootstrap, rpm

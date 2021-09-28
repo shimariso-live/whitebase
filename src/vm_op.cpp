@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 
 #include <uuid/uuid.h>
 
@@ -172,6 +173,63 @@ std::map<std::string,VM> list_vm()
         vm.ip_address = ip_address;
     });
     return vms;
+}
+
+int create_vm(const std::string& vmname, const std::string& volume, int data_partition)
+{
+    auto vm_dir = vm_root / vmname;
+    if (std::filesystem::exists(vm_dir)) {
+        throw std::runtime_error(vmname + " already exists");
+    }
+
+    auto volume_dir = get_volume_dir(volume, [](auto name) -> std::filesystem::path {throw std::runtime_error("Volume " + name + " does not exist");});
+    auto volume_vm_dir = volume_dir / vmname;
+    if (std::filesystem::exists(volume_vm_dir)) {
+        throw std::runtime_error(vmname + " already exists on volume " + volume);
+    }
+
+    try {
+        auto fs_dir = volume_vm_dir / "fs";
+        std::filesystem::create_directories(fs_dir);
+        check_call({"cp", "-a", "/usr/share/wb/stubvm/.", fs_dir.string()});
+        if (data_partition > 0) {
+            std::string size_str = std::to_string(data_partition) + "G";
+            check_call({"truncate", "-s", size_str, volume_vm_dir / "data"});
+        }
+
+        auto _home = getenv("HOME");
+        if (_home) {
+            std::filesystem::path home(_home);
+            auto src_ssh_dir = home / ".ssh";
+            auto dest_authorized_keys = fs_dir / ".stubroot" / "root" / ".ssh" / "authorized_keys";
+
+            auto append_file = [](const std::filesystem::path& src, const std::filesystem::path& dst) {
+                if (!std::filesystem::exists(src) || !std::filesystem::is_regular_file(src)) return false;
+                // else
+                std::ifstream in(src);
+                if (!in) return false;
+                // else
+                std::ofstream out(dst, std::ios_base::app);
+                if (!out) return false;
+                // else
+                std::string line;
+                while (std::getline(in, line)) {
+                    if (line != "") out << line << std::endl;
+                }
+                return true;
+            };
+
+            append_file(src_ssh_dir / "authorized_keys", dest_authorized_keys);
+            append_file(src_ssh_dir / "id_rsa.pub", dest_authorized_keys);
+        }
+        std::filesystem::create_directory_symlink(std::filesystem::path("@" + volume) / vmname, vm_dir);
+    }
+    catch (...) {
+        std::filesystem::remove_all(volume_vm_dir);
+        throw;
+    }
+
+    return 0;
 }
 
 int delete_vm(const std::string& vmname)

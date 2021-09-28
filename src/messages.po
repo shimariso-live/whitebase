@@ -15,7 +15,7 @@ msgstr "LVMを停止します"
 msgid "Warning: Data area won't be created due to too small disk"
 msgstr "警告: ディスク容量が小さいためデータ領域は作成されません"
 
-msgid "Creating partisions..."
+msgid "Creating partitions..."
 msgstr "パーティションを作成しています..."
 
 msgid "Done"

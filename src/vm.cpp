@@ -544,14 +544,13 @@ int vm(const std::string& name)
     auto system_image = vm_dir / "system", data_image = vm_dir / "data", swapfile = vm_dir / "swapfile", cdrom = vm_dir / "cdrom";
     bool has_system_image = std::filesystem::exists(system_image);
     bool has_data_image = std::filesystem::exists(data_image);
-    bool has_formatted_data_image = has_data_image && get_blkid(data_image);
 
-    std::vector<std::filesystem::path> kernel_candidates = {fs_dir / "boot" / "kernel", fs_dir / "boot" / "vmlinuz", fs_dir / "vmlinuz", "/boot/kernel"};
+    std::vector<std::filesystem::path> kernel_candidates = {fs_dir / "boot" / "kernel", fs_dir / "boot" / "vmlinuz", fs_dir / "vmlinuz"};
     auto kernel = std::find_if(kernel_candidates.begin(), kernel_candidates.end(), [](const auto& path) {return std::filesystem::exists(path);});
 
     auto boot_from_cdrom = std::filesystem::exists(cdrom); // TODO: check if media is loaded for real drive
 
-    auto boot_from_fs = !boot_from_cdrom && !has_system_image && !has_formatted_data_image && kernel != kernel_candidates.end();
+    auto boot_from_fs = !boot_from_cdrom && !has_system_image && kernel != kernel_candidates.end();
     qemu_cmdline.push_back("-device");
     qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=") + (boot_from_fs? "/dev/root" : "fs")); //,cache-size=") + std::to_string(memory) + "M");
 
