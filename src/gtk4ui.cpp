@@ -28,6 +28,8 @@
 #include "update.h"
 #include "wg.h"
 #include "yajl_value.h"
+#include "disk.h"
+#include "install.h"
 
 static const int WINDOW_WIDTH = 1024;
 static const int WINDOW_HEIGHT = 768;
@@ -1213,21 +1215,153 @@ void MainWindow::on_leave_async_job()
     m_box.set_sensitive(true);
 }
 
+class InstallerPage : public Gtk::Box, MessageDialogHolder {
+    Gtk::Label message;
+    Gtk::TreeView treeview;
+    Gtk::TreeModelColumnRecord columnrecoed;
+    Glib::RefPtr<Gtk::ListStore> liststore;
+
+    struct {
+        Gtk::TreeModelColumn<std::string> name;
+        Gtk::TreeModelColumn<std::string> model;
+        Gtk::TreeModelColumn<std::string> tran;
+        Gtk::TreeModelColumn<uint16_t> logsec;
+        Gtk::TreeModelColumn<uint64_t> size;
+        Gtk::TreeModelColumn<std::string> size_str;
+    } columns;
+
+    Gtk::Button install_button;
+
+    struct {
+        std::vector<Disk> disks;
+    } async_result;
+
+    sigc::signal<void()> _signal_reboot;
+public:
+    InstallerPage(Gtk::Window& parent) : Gtk::Box(Gtk::Orientation::VERTICAL), MessageDialogHolder(parent), 
+        message("インストールを開始するには、インストール先のディスクを選択して\n「インストール開始」ボタンを押してください。"),
+        install_button("インストール開始(_I)", true) {
+
+        append(message);
+
+        columnrecoed.add(columns.name);
+        columnrecoed.add(columns.model);
+        columnrecoed.add(columns.tran);
+        columnrecoed.add(columns.logsec);
+        columnrecoed.add(columns.size);
+        columnrecoed.add(columns.size_str);
+        liststore = Gtk::ListStore::create(columnrecoed);
+        treeview.set_model(liststore);
+        treeview.append_column("デバイス名", columns.name);
+        treeview.append_column("モデル", columns.model);
+        treeview.append_column("接続", columns.tran);
+        treeview.append_column("容量", columns.size_str);
+        treeview.signal_cursor_changed().connect([this]() {
+            install_button.set_sensitive(treeview.get_selection()->get_selected()? true : false);
+        });
+        treeview.set_expand();
+        append(treeview);
+
+        install_button.signal_clicked().connect([this]() { do_install(); });
+        install_button.set_sensitive(false);
+        append(install_button);
+    }
+
+    virtual void on_realize() {
+        Gtk::Box::on_realize();
+        auto& async_result = this->async_result;
+        show_message_dialog("利用可能なディスクを検出中...", [&async_result]() {
+            try {
+                async_result.disks = get_unused_disks();
+            }
+            catch (const std::runtime_error& e) {
+                std::cerr << e.what() << std::endl;
+                return false;
+            }
+            return true;
+        }, [this]() {
+            liststore->clear();
+            //std::cout << "Number of disks:" << this->async_result.disks.size() << std::endl;
+            for (const auto& disk:this->async_result.disks) {
+                if (!disk.log_sec) continue; // skip disk with unknown logical sector size
+                auto row = *liststore->append();
+                row[columns.name] = disk.name;
+                row[columns.model] = disk.model.value_or("-");
+                row[columns.tran] = disk.tran.value_or("-");
+                row[columns.logsec] = disk.log_sec.value();
+                row[columns.size] = disk.size;
+                row[columns.size_str] = human_readable(disk.size) + "B";
+            }
+            // setup list
+        }, [this]() {
+            show_message_dialog("ディスクの検出中にエラーが発生しました", Gtk::MessageType::ERROR);
+        });
+    }
+
+    void do_install() {
+        auto disk_selected = treeview.get_selection()->get_selected();
+        if (!disk_selected) return;
+        std::filesystem::path dev("/dev");
+        auto disk = dev / disk_selected->get_value(columns.name);
+        auto model = disk_selected->get_value(columns.model);
+        auto size = disk_selected->get_value(columns.size);
+        auto size_str = disk_selected->get_value(columns.size_str);
+        auto log_sec = disk_selected->get_value(columns.logsec);
+        show_message_dialog(model + "(" + size_str + ")" + "にシステムをインストールします。このディスクの内容はすべて消去されますがよろしいですか？", [this,disk,size,log_sec]() {
+            show_message_dialog("インストール中...", [disk,size,log_sec](std::stop_token st, std::function<void(double)> progress) {
+                try {
+                    return ::do_install(disk, size, log_sec, {}, st, progress);
+                }
+                catch (const std::runtime_error& e) {
+                    std::cerr << e.what() << std::endl;
+                    return false;
+                }
+            }, [this]() {
+                show_message_dialog("インストールが完了しました。システムを再起動します。", [this]() {
+                    {
+                        std::ofstream f("/run/initramfs/eject");
+                        if (f) f << "do eject" << std::endl;
+                    }
+                    _signal_reboot();
+                });
+            }, [this]() {
+                show_message_dialog("インストールが中断されました。", Gtk::MessageType::ERROR);
+            });
+        }, []() {
+            // cancelled
+        }, Gtk::MessageType::WARNING);
+    }
+
+    sigc::signal<void()> signal_reboot() { return _signal_reboot; }
+};
+
 class InstallerWindow : public Gtk::Window {
     HeaderPicture header;
     FooterPicture footer;
-    Gtk::Label content;
-    Gtk::Notebook notebook;
-    Gtk::Box box;
+
+    Gtk::Stack stack;
+    Gtk::StackSidebar sidebar;
+
+    Gtk::Box box, sidebar_stack_box;
+
+    InstallerPage installer;
     ConsolePage console;
 public:
-    InstallerWindow() : content("Walbrix インストーラー"), box(Gtk::Orientation::VERTICAL) {
-        notebook.append_page(content, "インストール");
-        notebook.append_page(console, "Linuxコンソール");
-        notebook.set_vexpand();
+    InstallerWindow() : box(Gtk::Orientation::VERTICAL), installer(*this) {
+        installer.signal_reboot().connect([this]() {
+            shutdown_cmd = 2; // reboot
+            close();
+        });
+
+        stack.add(installer, "install", "インストール");
+        stack.add(console, "console", "Linuxコンソール");
+        sidebar_stack_box.append(sidebar);
+        sidebar_stack_box.append(stack);
+        sidebar_stack_box.set_expand();
+        sidebar.set_stack(stack);
 
         box.append(header);
-        box.append(notebook);
+        box.append(sidebar_stack_box);
         box.append(footer);
         set_child(box);
     }
@@ -1261,22 +1395,20 @@ static bool ping()
 
 int gtk4installer(const std::vector<std::string>& args)
 {
-    try {
-        while (!ping()) {
-            sleep(1);
+    if (getenv("WAYLAND_DISPLAY")) {
+        try {
+            while (!ping()) {
+                sleep(1);
+            }
         }
-    }
-    catch (const std::exception& ex) {
-        ;
+        catch (const std::exception& ex) {
+            ;
+        }
     }
     auto rst = Gtk::Application::create(app_name)->make_window_and_run<InstallerWindow>(0, nullptr);
     if (shutdown_cmd == 1) {
         rst = call({"/bin/systemctl", "poweroff"});
     } else if (shutdown_cmd == 2) {
-        {
-            std::ofstream f("/run/initramfs/eject");
-            if (f) f << "do eject" << std::endl;
-        }
         rst = call({"/bin/systemctl", "reboot"});
     }
     // 0, 3: just quit
@@ -1297,13 +1429,15 @@ int gtk4ui(const std::vector<std::string>& args)
 
 int gtk4login(const std::vector<std::string>& args)
 {
-    try {
-        while (!ping()) {
-            sleep(1);
+    if (getenv("WAYLAND_DISPLAY")) {
+        try {
+            while (!ping()) {
+                sleep(1);
+            }
         }
-    }
-    catch (const std::exception& ex) {
-        ;
+        catch (const std::exception& ex) {
+            ;
+        }
     }
 
     class AppWindow : public Gtk::Window {
