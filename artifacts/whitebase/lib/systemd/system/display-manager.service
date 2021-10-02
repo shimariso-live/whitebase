@@ -1,7 +1,6 @@
 [Unit]
 Description=Weston
 Conflicts=getty@tty1.service
-ConditionPathExistsGlob=/dev/dri/card*
 
 [Service]
 Type=notify

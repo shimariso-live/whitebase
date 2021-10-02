@@ -49,10 +49,10 @@ else
 		echo -e '[keyboard]\nkeymap_layout='$X11_LAYOUT'\nkeymap_model='$X11_MODEL >> $XDG_RUNTIME_DIR/weston.ini
 	fi
 
-	# wait for GPU driver to be loaded
 	while [ ! -e "/dev/dri/renderD128" ]; do
+		echo "Waiting for GPU driver to be loaded..."
 		sleep 1
-		((c++)) && ((c==3)) && break
+		((c++)) && ((c==3)) && echo "GPU driver not loaded." && break
 	done
 
 	exec /usr/bin/weston --config=$XDG_RUNTIME_DIR/weston.ini --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
