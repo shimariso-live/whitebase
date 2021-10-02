@@ -18,7 +18,7 @@ struct VM {
 };
 
 std::map<std::string,VM> list_vm();
-int create_vm(const std::string& vmname, const std::string& volume, int data_partition);
+int create_vm(const std::string& vmname, const std::string& volume, uint32_t memory = 1024, uint16_t cpu = 1, std::optional<uint32_t> data_partition = std::nullopt, bool stub = true);
 int delete_vm(const std::string& vmname);
 
 void for_each_running_vm(std::function<void(const std::string&)> func);

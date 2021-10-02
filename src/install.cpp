@@ -19,6 +19,10 @@
 #include "disk.h"
 #include "install.h"
 #include "messages.h"
+#include "common.h"
+
+static const std::filesystem::path run_initramfs_boot("/run/initramfs/boot");
+static const std::filesystem::path system_img = run_initramfs_boot / "system.img";
 
 static void exec_command(const std::string& cmd, const std::vector<std::string>& args)
 {
@@ -145,6 +149,51 @@ static std::optional<std::string> get_partition_uuid(const std::filesystem::path
   return rst;
 }
 
+int grub_mkimage(const std::filesystem::path& boot_partition_dir)
+{
+    auto efi_boot = boot_partition_dir / "efi/boot";
+    std::filesystem::create_directories(efi_boot);
+    // install EFI bootloader
+    return call({"grub-mkimage", "-p", "/boot/grub", "-o", (efi_boot / "bootx64.efi").string(), "-O", "x86_64-efi", 
+        "xfs","btrfs","fat","part_gpt","part_msdos","normal","linux","echo","all_video","test","multiboot","multiboot2","search","sleep","iso9660","gzio",
+        "lvm","chain","configfile","cpuid","minicmd","gfxterm_background","png","font","terminal","squash4","serial","loopback","videoinfo","videotest",
+        "blocklist","probe","efi_gop","efi_uga", "keystatus"});
+}
+
+int grub_install(const std::filesystem::path& boot_partition_dir, const std::filesystem::path& disk)
+{
+    return call({"grub-install", "--target=i386-pc", "--recheck", std::string("--boot-directory=") + (boot_partition_dir / "boot").string(),
+        "--modules=xfs btrfs fat part_msdos normal linux echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal serial squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
+        disk.string()});
+}
+
+bool install_bootloader(const std::filesystem::path& disk, const std::filesystem::path& boot_partition_dir, bool bios_compatible = true)
+{
+    if (grub_mkimage(boot_partition_dir) != 0) return false;
+    //else
+    if (bios_compatible) {
+        // install BIOS bootloader
+        if (grub_install(boot_partition_dir, disk) != 0) return false;
+    }
+    // create boot config file
+    auto grub_dir = boot_partition_dir / "boot/grub";
+    std::filesystem::create_directories(grub_dir);
+    {
+        std::ofstream grubcfg(grub_dir / "grub.cfg");
+        if (grubcfg) {
+            grubcfg << "insmod echo\ninsmod linux\ninsmod cpuid\n"
+                << "set BOOT_PARTITION=$root\n"
+                << "loopback loop /system.img\n"
+                << "set root=loop\nset prefix=($root)/boot/grub\nnormal"
+                << std::endl;
+        } else {
+            std::cout << "Writing grub.cfg failed." << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 bool do_install(const std::filesystem::path& disk, uint64_t size, uint16_t log_sec, const std::map<std::string,std::string>& grub_vars/*={}*/, 
     std::stop_token st/* = std::stop_token()*/, std::function<void(double)> progress/* = [](double){}*/)
 {
@@ -203,17 +252,10 @@ bool do_install(const std::filesystem::path& disk, uint64_t size, uint16_t log_s
         if (st.stop_requested()) return false;
 
         std::cout << MSG("Installing UEFI bootloader") << std::endl;
-        auto efi_boot = mnt / "efi/boot";
-        std::filesystem::create_directories(efi_boot);
-        exec_command("grub-mkimage", {"-p", "/boot/grub", "-o", (efi_boot / "bootx64.efi").string(), "-O", "x86_64-efi", 
-            "xfs","btrfs","fat","part_gpt","part_msdos","normal","linux","echo","all_video","test","multiboot","multiboot2","search","sleep","iso9660","gzio",
-            "lvm","chain","configfile","cpuid","minicmd","gfxterm_background","png","font","terminal","squash4","loopback","videoinfo","videotest",
-            "blocklist","probe","efi_gop","efi_uga", "keystatus"});
+        grub_mkimage(mnt);
         if (bios_compatible) {
             std::cout << MSG("Installing BIOS bootloader") << std::endl;
-            exec_command("grub-install", {"--target=i386-pc", "--recheck", std::string("--boot-directory=") + (mnt / "boot").string(),
-                "--modules=xfs btrfs fat part_msdos normal linux echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
-                disk.string()});
+            grub_install(mnt, disk);
         } else {
             std::cout << MSG("This system will be UEFI-only as this disk cannot be treated by BIOS") << std::endl;
         }
@@ -245,9 +287,8 @@ bool do_install(const std::filesystem::path& disk, uint64_t size, uint16_t log_s
         if (st.stop_requested()) return false;
 
         std::cout << MSG("Copying system file") << std::endl;
-        std::filesystem::path run_initramfs_boot("/run/initramfs/boot");
-        char buf[128 * 1024];
-        FILE* f1 = fopen((run_initramfs_boot / "system.img").c_str(), "r");
+        char buf[1024 * 1024]; // 1MB buffer
+        FILE* f1 = fopen(system_img.c_str(), "r");
         if (!f1) throw std::runtime_error("Unable to open system file");
         //else
         struct stat statbuf;
@@ -350,6 +391,35 @@ int install_cmdline(const std::vector<std::string>& args)
         return 1;
     }
     return 0;
+}
+
+int create_install_media(const std::filesystem::path& disk_path)
+{
+    auto disk = get_unused_disk(disk_path, 1024L * 1024 * 1024 * 3/*3GB*/);
+
+    if (disk.size > 2199023255552L/*2TiB*/) throw std::runtime_error("Disk is too large for FAT32.");
+    if (!std::filesystem::exists(system_img)) throw std::runtime_error("System image file does not exist.");
+
+    std::vector<std::string> parted_args = {"parted", "--script", disk_path.string()};
+    bool bios_compatible = (disk.log_sec == 512);
+    parted_args.push_back(bios_compatible? "mklabel msdos" : "mklabel gpt");
+    parted_args.push_back("mkpart primary fat32 1MiB -1");
+    parted_args.push_back("set 1 boot on");
+    if (bios_compatible) parted_args.push_back("set 1 esp on");
+    check_call(parted_args);
+    call({"udevadm", "settle"});
+    auto boot_partition_path = get_partition(disk_path, 1);
+    if (!boot_partition_path) throw std::runtime_error("Unable to determine created boot partition");
+    check_call({"mkfs.vfat", "-F", "32", "-n", "WBINSTALL", boot_partition_path.value()});
+
+    return with_tempmount<int>(boot_partition_path.value(), "vfat", MS_RELATIME, "fmask=177,dmask=077", [&disk_path,&boot_partition_path,bios_compatible](const std::filesystem::path& mnt) {
+        std::filesystem::copy(system_img, mnt / "system.img");
+        std::ofstream f(mnt / "system.cfg");
+        if (!f) throw std::runtime_error("system.cfg cannot be opened");
+        f << "set systemd_unit=\"installer.target\"" << std::endl;
+
+        return install_bootloader(disk_path, mnt, bios_compatible);
+    });
 }
 
 static int _main(int,char*[])

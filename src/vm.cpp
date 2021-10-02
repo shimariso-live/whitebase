@@ -489,6 +489,9 @@ int vm(const std::string& name)
     // rtc
     auto rtc = iniparser_getstring(ini.get(), ":rtc", iniparser_getstring(default_ini.get(), ":rtc", NULL));
 
+    // kvm
+    bool kvm = std::filesystem::exists("/dev/kvm")? iniparser_getboolean(ini.get(), ":kvm", iniparser_getboolean(default_ini.get(), ":kvm", 1)) : false;
+
     // virtiofsd setting
     auto virtiofsd_cache = iniparser_getstring(ini.get(), "virtiofsd:cache", iniparser_getstring(default_ini.get(), "virtiofsd:cache", "auto"));
     auto virtiofsd_modcaps = iniparser_getstring(ini.get(), "virtiofsd:modcaps", iniparser_getstring(default_ini.get(), "virtiofsd:modcaps", "+sys_admin:+sys_resource:+fowner:+setfcap"));
@@ -512,7 +515,7 @@ int vm(const std::string& name)
     };
 
     std::vector<std::string> qemu_cmdline = {
-        "qemu-system-x86_64","-enable-kvm","-M","q35",//"-rtc","base=utc,clock=rt",
+        "qemu-system-x86_64","-M","q35",//"-rtc","base=utc,clock=rt",
         "-m", std::to_string(memory),
         "-smp", "cpus=" + std::to_string(cpus), 
         "-uuid", get_or_generate_uuid(name), 
@@ -524,6 +527,8 @@ int vm(const std::string& name)
         "-chardev", "socket,path=" + qga_bridge_sock.string() + ",server=on,wait=off,id=qga0", 
         "-device", "virtio-serial", "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
     };
+
+    if (kvm) qemu_cmdline.push_back("-enable-kvm");
 
     if (rtc) {
         qemu_cmdline.push_back("-rtc");

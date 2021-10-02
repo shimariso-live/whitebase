@@ -351,6 +351,8 @@ static int create(const std::vector<std::string>& args)
 {
     argparse::ArgumentParser program(args[0]);
     program.add_argument("--volume", "-v").help("Specify volume to create VM on").default_value(std::string("default"));
+    program.add_argument("--memory", "-m").help("Memory capacity in MB").default_value(std::string("1024"));
+    program.add_argument("--cpu", "-c").help("Number of CPU").default_value(std::string("1"));
     program.add_argument("--data-partition").help("Create uninitialized data partition with specified size in GiB").default_value(std::string("0"));
     program.add_argument("vmname").help("VM name");
     try {
@@ -365,9 +367,11 @@ static int create(const std::vector<std::string>& args)
     auto vmname = program.get<std::string>("vmname");
 
     auto volume = program.get<std::string>("--volume");
+    auto memory = std::stoul(program.get<std::string>("--memory"));
+    auto cpu = std::stoul(program.get<std::string>("--cpu"));
     auto data_partition = std::stoul(program.get<std::string>("--data-partition"));
 
-    return create_vm(vmname, volume, data_partition);
+    return create_vm(vmname, volume, (uint32_t)memory, (uint16_t)cpu, data_partition > 0? std::make_optional(data_partition) : std::nullopt);
 }
 
 static int _delete(const std::vector<std::string>& args)
@@ -386,6 +390,24 @@ static int _delete(const std::vector<std::string>& args)
     auto vmname = program.get<std::string>("vmname");
 
     return delete_vm(vmname);
+}
+
+static int create_install_media(const std::vector<std::string>& args)
+{
+    argparse::ArgumentParser program(args[0]);
+    program.add_argument("disk").help("Disk");
+    try {
+        program.parse_args(args);
+    }
+    catch (const std::runtime_error& err) {
+        std::cout << err.what() << std::endl;
+        std::cout << program;
+        return 1;
+    }
+
+    auto disk = program.get<std::string>("disk");
+
+    return create_install_media(std::filesystem::path(disk));
 }
 
 static int activate(const std::vector<std::string>& args)
@@ -421,6 +443,7 @@ static const std::map<std::string,std::pair<int (*)(const std::vector<std::strin
   {"wg-pubkey", {wg_pubkey, "Show WireGuard public key"}},
   {"wg-getconfig", {wg_getconfig, "Get authorized WireGuard config from server"}},
   {"wg-notify", {wg_notify, "Send notification message via HTTP over WireGuard"}},
+  {"create-install-media", {create_install_media, "Create install media"}},
 };
 
 static void show_subcommands()

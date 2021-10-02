@@ -36,6 +36,121 @@ static const int WINDOW_HEIGHT = 768;
 
 static int shutdown_cmd = 0;
 
+auto& vm_list() {
+    struct VMColumns : Gtk::TreeModelColumnRecord {
+        Gtk::TreeModelColumn<bool> running;
+        Gtk::TreeModelColumn<bool> autostart;
+        Gtk::TreeModelColumn<std::string> name;
+        Gtk::TreeModelColumn<std::string> volume;
+        Gtk::TreeModelColumn<std::string> cpu;
+        Gtk::TreeModelColumn<std::string> memory;
+        Gtk::TreeModelColumn<std::string> ip_address;
+        VMColumns(){add(running); add(autostart); add(name); add(volume); add(cpu); add(memory); add(ip_address);}
+    };
+
+    struct VMList : public VMColumns, Glib::RefPtr<Gtk::ListStore> {
+        VMList() : VMColumns(), Glib::RefPtr<Gtk::ListStore>(Gtk::ListStore::create(*this)) { }
+
+        void reload() {
+            auto vms = list_vm();
+            auto get_or_append = [this](const std::string& name) {
+                auto i = get()->get_iter("0");
+                while (i) {
+                    if (i->get_value(this->name) == name) return i;
+                    i++;
+                }
+                return get()->append();
+            };
+
+            for (const auto& i:vms) {
+                auto row = get_or_append(i.first);
+                row->set_value(name, i.first);
+                row->set_value(running, i.second.running);
+                row->set_value(autostart, i.second.autostart);
+                row->set_value(volume, i.second.volume.value_or("-"));
+                row->set_value(cpu, i.second.cpu? std::to_string(i.second.cpu.value()) : std::string("-"));
+                row->set_value(memory, i.second.memory? std::to_string(i.second.memory.value()) + "MB" : std::string("-"));
+                row->set_value(ip_address, i.second.ip_address.value_or("-"));
+            }
+
+            // erase vanished vms
+            auto i = get()->get_iter("0");
+            while (i) {
+                if (vms.find(i->get_value(name)) == vms.end()) {
+                    i = get()->erase(i);
+                } else {
+                    i++;
+                }
+            }
+        }
+
+        bool exists(const std::string& name) {
+            auto i = get()->get_iter("0");
+            while (i) {
+                if (i->get_value(this->name) == name) return true;
+                i++;
+            }
+            return false;
+        }
+    };
+
+    static VMList _vmlist;
+    return _vmlist;
+}
+
+auto& volume_list() {
+    struct VolumeColumns : Gtk::TreeModelColumnRecord {
+        Gtk::TreeModelColumn<std::string> name;
+        Gtk::TreeModelColumn<bool> online;
+        Gtk::TreeModelColumn<std::string> path;
+        Gtk::TreeModelColumn<std::string> device_or_uuid;
+        Gtk::TreeModelColumn<std::string> fstype;
+        Gtk::TreeModelColumn<std::string> size;
+        Gtk::TreeModelColumn<std::string> free;
+        VolumeColumns() { add(name); add(online); add(path); add(device_or_uuid); add(fstype); add(size); add(free); }
+    };
+
+    struct VolumeList : public VolumeColumns, Glib::RefPtr<Gtk::ListStore> {
+        VolumeList() : VolumeColumns(), Glib::RefPtr<Gtk::ListStore>(Gtk::ListStore::create(*this)) { }
+        void reload() {
+            auto volumes = get_volume_list();
+
+            auto get_or_append = [this](const std::string& name) {
+                auto i = get()->get_iter("0");
+                while (i) {
+                    if (i->get_value(this->name) == name) return i;
+                    i++;
+                }
+                return get()->append();
+            };
+
+            for (const auto& i:volumes) {
+                auto row = get_or_append(i.first);
+                row->set_value(name, i.first);
+                row->set_value(online, i.second.online);
+                row->set_value(path, i.second.path.string());
+                row->set_value(device_or_uuid, i.second.device_or_uuid);
+                row->set_value(fstype, i.second.fstype.value_or("-"));
+                row->set_value(size, i.second.size? human_readable(i.second.size.value()) : std::string("-"));
+                row->set_value(free, i.second.free? human_readable(i.second.free.value()) : std::string("-"));
+            }
+
+            // erase vanished volumes
+            auto i = get()->get_iter("0");
+            while (i) {
+                if (volumes.find(i->get_value(name)) == volumes.end()) {
+                    i = get()->erase(i);
+                } else {
+                    i++;
+                }
+            }
+        }
+    };
+
+    static VolumeList _volumelist;
+    return _volumelist;
+}
+
 static std::string resource_path(const std::filesystem::path& name)
 {
   static const std::filesystem::path default_theme("/usr/share/wb/themes/default");
@@ -98,41 +213,63 @@ TitleWindow::TitleWindow()
     entry_dialog.show();
 }
 
-class StatusPage : public Gtk::Grid {
-    Gtk::Label hdr_serialnumber, hdr_kernel_version, hdr_ipaddress, hdr_cpus, hdr_clock, hdr_memory;
-    Gtk::Label serialnumber, kernel_version, ipaddress, cpus, clock, memory;
+class StatusPage : public Gtk::Box {
+    Gtk::Grid grid;
+    Gtk::Label hdr_serialnumber, hdr_kernel_version, hdr_ipaddress, hdr_cpu_model, hdr_cpus, hdr_clock, hdr_memory;
+    Gtk::Label serialnumber, kernel_version, ipaddress, cpu, cpus, clock, memory;
+    Gtk::Label kvm_warning;
 public:
-    StatusPage() : hdr_serialnumber("シリアルナンバー"), hdr_kernel_version("カーネルバージョン"), hdr_ipaddress("IPアドレス"),
-        hdr_cpus("論理CPUコア数"), hdr_clock("CPUクロック"), hdr_memory("メモリ容量") {
+    StatusPage() : Gtk::Box(Gtk::Orientation::VERTICAL), hdr_serialnumber("シリアルナンバー"), hdr_kernel_version("カーネルバージョン"), hdr_ipaddress("IPアドレス"),
+        hdr_cpu_model("CPU"), hdr_cpus("論理CPUコア数"), hdr_clock("CPUクロック"), hdr_memory("メモリ容量"),
+        kvm_warning("<span foreground='red'>このコンピュータは仮想化命令に対応していないため、仮想マシンの実行性能が極端に低くなります。\n仮想化命令を有効にするにはコンピュータのBIOS/UEFI設定を確認してください。</span>", true) {
 
-        set_margin(8);
+        grid.set_margin(8);
 
-        auto set_row = [this](Gtk::Label& header_label, Gtk::Label& value_label, const std::string& content, int row, bool selectable = false) {
-            header_label.set_margin(4);
-            header_label.set_margin_end(16);
-            attach(header_label, 0, row);
-            value_label.set_label(content);
-            value_label.set_halign(Gtk::Align::START);
-            if (selectable) value_label.set_selectable();
-            attach(value_label, 1, row);
-        };
+        kvm_warning.hide();
+        std::vector<std::pair<Gtk::Label&,Gtk::Widget&>> grid_labels({
+            {hdr_serialnumber, serialnumber}, 
+            {hdr_kernel_version, kernel_version}, 
+            {hdr_ipaddress, ipaddress},
+            {hdr_cpu_model, cpu},
+            {hdr_cpus, cpus},
+            {hdr_clock, clock},
+            {hdr_memory, memory}
+        });
+        int row = 0;
+        for (const auto& i : grid_labels) {
+            i.first.set_margin(4);
+            i.first.set_margin_end(16);
+            grid.attach(i.first, 0, row);
+            i.second.set_halign(Gtk::Align::START);
+            grid.attach(i.second, 1, row++);
+        }
+        append(grid);
+        append(kvm_warning);
+    }
 
+    void on_realize() {
+        Gtk::Box::on_realize();
+        reload();
+    }
+
+    void reload() {
         struct utsname u;
         if (uname(&u) < 0) throw std::runtime_error("uname(2) failed");
-        set_row(hdr_serialnumber, serialnumber, u.nodename, 0);
-        set_row(hdr_kernel_version, kernel_version, u.release, 1);
+        serialnumber.set_text(u.nodename);
+        kernel_version.set_text(u.release);
 
-        auto ipv4_address = get_ipv4_address();
-        set_row(hdr_ipaddress, ipaddress, ipv4_address.value_or("不明"), 2);
+        ipaddress.set_text(get_ipv4_address().value_or("不明"));
 
+        cpu.set_text(get_cpu_model().value_or("不明"));
         auto ncpu = std::thread::hardware_concurrency();
-        set_row(hdr_cpus, cpus, ncpu > 0? std::to_string(ncpu) : "不明", 3);
+        cpus.set_text(ncpu > 0? std::to_string(ncpu) : "不明");
 
-        auto cpu_clock = get_cpu_clock();
-        set_row(hdr_clock, clock, cpu_clock.value_or("不明"), 4);
+        clock.set_text(get_cpu_clock().value_or("不明"));
 
         auto memory_cap = get_memory_capacity();
-        set_row(hdr_memory, memory, memory_cap? ("空き" + std::to_string(memory_cap.value().first) + "MB / 全体" + std::to_string(memory_cap.value().second) + "MB") :"不明", 5);
+        memory.set_text(memory_cap? ("空き" + human_readable(memory_cap.value().first) + "B / 全体" + human_readable(memory_cap.value().second) + "B") :"不明");
+
+        if (!std::filesystem::exists("/dev/kvm")) kvm_warning.show();
     }
 
     static std::optional<std::string> get_interface_name_with_default_gateway() {
@@ -167,32 +304,59 @@ public:
         return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
     }
 
-    static std::optional<std::string> get_cpu_clock() {
-        std::ifstream cpuinfo("/proc/cpuinfo");
-        if (!cpuinfo) return std::nullopt;
-        std::string line;
-        std::list<int> freqs;
-        const char* mhz_header = "cpu MHz		: ";
-        const size_t header_len = strlen(mhz_header);
-        while (std::getline(cpuinfo, line)) {
-            if (!line.starts_with(mhz_header)) continue;
-            freqs.push_back((int)atof(line.substr(header_len).c_str()));
+    static std::optional<std::string> get_cpu_model()
+    {
+        std::ifstream f("/proc/cpuinfo");
+        if (!f) return std::nullopt;
+        std::string s;
+        while (std::getline(f, s)) {
+            if (s.starts_with("model name	: ")) return s.substr(13);
         }
-        if (freqs.size() == 0) return std::nullopt;
-        //else
-        auto minmax = std::minmax_element(freqs.begin(), freqs.end());
-        int min = *minmax.first;
-        int max = *minmax.second;
-        if (min == max) return std::to_string(min) + "MHz";
-        //else
-        return  std::to_string(min) + "-" + std::to_string(max) + "MHz";
+        return std::nullopt;
     }
 
-    static std::optional<std::pair<int,int> > get_memory_capacity() {
+    static std::optional<std::string> get_cpu_clock() {
+        uint64_t cpuinfo_cur_freq;
+        uint64_t cpuinfo_min_freq = 0L, cpuinfo_max_freq = 0L;
+        try {
+            {
+                std::ifstream f("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq");
+                if (!f) {
+                    if(f.is_open()) f.close();
+                    f.open("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq");
+                    if (!f) return std::nullopt;
+                }
+                f >> cpuinfo_cur_freq;
+            }
+            {
+                std::ifstream f("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq");
+                if (f) {
+                    f >> cpuinfo_min_freq;
+                }
+            }
+            {
+                std::ifstream f("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
+                if (f) {
+                    f >> cpuinfo_max_freq;
+                }
+            }
+        }
+        catch (...) {
+            return std::nullopt;
+        }
+        std::string cpu_clock_str = human_readable(cpuinfo_cur_freq * 1000, 1000.0) + "Hz";
+        if (cpuinfo_min_freq > 0L && cpuinfo_max_freq > 0L) {
+            cpu_clock_str += "(" + human_readable(cpuinfo_min_freq * 1000, 1000.0) + "Hz-" + human_readable(cpuinfo_max_freq * 1000, 1000.0) + "Hz)";
+        }
+
+        return cpu_clock_str;
+    }
+
+    static std::optional<std::pair<uint64_t,uint64_t> > get_memory_capacity() {
         std::ifstream meminfo("/proc/meminfo");
         if (!meminfo) return std::nullopt;
         std::string line;
-        int available = 0, total = 0;
+        uint64_t available = 0, total = 0;
         while (std::getline(meminfo, line)) {
             std::string column_name;
             auto i = line.begin();
@@ -206,8 +370,8 @@ public:
             if (i != line.end()) {
                 while (i != line.end()) unit += *i++;
             }
-            if (column_name == "MemTotal" && unit == "kB") total = atoi(value.c_str()) / 1024; // MB
-            else if (column_name == "MemAvailable" && unit == "kB") available = atoi(value.c_str()) / 1024; // MB
+            if (column_name == "MemTotal" && unit == "kB") total = std::stoul(value) * 1024;
+            else if (column_name == "MemAvailable" && unit == "kB") available = std::stoul(value) * 1024;
             if (total > 0 && available > 0) break;
         }
         if (total == 0 || available == 0) return std::nullopt;
@@ -216,15 +380,176 @@ public:
     }
 };
 
+class NewVMPage : public Gtk::Box, MessageDialogHolder {
+    Gtk::Grid grid;
+    Gtk::Label vmname_label, volume_label, cpu_label, memory_label, system_image_label, block_device_label, block_device_size_label;
+
+    Gtk::Entry vmname;
+    Gtk::ComboBox volume;
+    Gtk::SpinButton cpu, memory, block_device_size;
+    Glib::RefPtr<Gtk::Adjustment> cpu_adj, memory_adj, block_device_size_adj;
+    Gtk::CheckButton system_image, block_device_checkbox;
+    Gtk::Button system_image_button;
+    Gtk::Box block_device_group;
+
+    Gtk::Button create_button;
+public:
+    NewVMPage(Gtk::Window& parent) : MessageDialogHolder(parent), Gtk::Box(Gtk::Orientation::VERTICAL), block_device_group(Gtk::Orientation::HORIZONTAL),
+        vmname_label("仮想マシン名"), volume_label("領域"), cpu_label("CPU数"), memory_label("RAM容量(MB)"), system_image_label("システムイメージ"), 
+        system_image_button("開発中"),
+        block_device_label("ブロックデバイス"), block_device_size_label("容量(GB)"), 
+        block_device_checkbox("使用する(_B)", true), create_button("仮想マシンを作成(_T)", true) {
+        
+        vmname.set_max_length(16);
+        vmname.set_placeholder_text("英数字16文字まで");
+        vmname.signal_changed().connect([this]() {
+            set_create_button_sensitivity();
+        });
+        volume.set_model(volume_list());
+        volume.pack_start(volume_list().name);
+        volume.pack_start(volume_list().size);
+        volume.set_id_column(0);
+        volume.signal_changed().connect([this]() {
+            set_create_button_sensitivity();
+        });
+        cpu_adj = Gtk::Adjustment::create(1, 1, 256/*TODO: Consider actual number of cpu*/);
+        cpu.set_adjustment(cpu_adj);
+        memory_adj = Gtk::Adjustment::create(1024, 512, 256 * 1024/*TODO: Consider actual memory capacity*/, 128);
+        memory.set_adjustment(memory_adj);
+        block_device_size_adj = Gtk::Adjustment::create(4, 1, 16 * 1024/*16TB*/);
+        block_device_size.set_adjustment(block_device_size_adj);
+
+        system_image_button.set_sensitive(false);
+        block_device_checkbox.signal_toggled().connect([this]() {
+            block_device_size.set_sensitive(block_device_checkbox.get_active());
+        });
+        block_device_group.append(block_device_checkbox);
+        block_device_group.append(block_device_size_label);
+        block_device_group.append(block_device_size);
+        set_default();
+        std::vector<std::pair<Gtk::Label&,Gtk::Widget&>> grid_labels({
+            {vmname_label, vmname}, 
+            {volume_label, volume}, 
+            {cpu_label, cpu},
+            {memory_label, memory},
+            {system_image_label, system_image_button},
+            {block_device_label, block_device_group}
+        });
+        int row = 0;
+        for (const auto& i : grid_labels) {
+            i.first.set_margin(4);
+            i.first.set_margin_end(16);
+            grid.attach(i.first, 0, row);
+            i.second.set_halign(Gtk::Align::START);
+            grid.attach(i.second, 1, row++);
+        }
+        append(grid);
+        create_button.set_sensitive(false);
+        create_button.signal_clicked().connect([this]() {
+            do_create_new_vm();
+        });
+        append(create_button);
+    }
+
+    std::optional<std::string> get_vmname_if_proper() {
+        auto is_hostname_ok = [](const std::string& name) {
+            bool previously_unsco_or_hyphen = false;
+            for (char c:"-" + name + "-") {
+                if (strchr("0123456789abcdefghijklmnopqrstuvwxyz-_", c) == NULL) return false;
+                if (c == '-' || c == '_') {
+                    if (previously_unsco_or_hyphen) return false;
+                    else previously_unsco_or_hyphen = true;
+                } else {
+                    previously_unsco_or_hyphen = false;
+                }
+            }
+            return true;
+        };
+        auto strlower = [](const std::string& str) -> std::string {
+            std::string lower_str;
+            for (char c:str) {
+                lower_str += (char)tolower(c);
+            }
+            return lower_str;
+        };
+        std::string vmname_str = strlower(vmname.get_text());
+
+        return is_hostname_ok(vmname_str)? std::make_optional(vmname_str) : std::nullopt;
+    }
+
+    void set_create_button_sensitivity()
+    {
+        auto vmname_str = get_vmname_if_proper();
+        auto is_volume_appropriate = [this]() {
+            auto selected = volume.get_active();
+            if (!selected) return false;
+            return selected->get_value(volume_list().online);
+        };
+        bool ok = (vmname_str && is_volume_appropriate() && !vm_list().exists(vmname_str.value()));
+        create_button.set_sensitive(ok);
+    }
+
+    virtual void on_realize() {
+        Gtk::Box::on_realize();
+        set_default();
+    }
+
+    void set_default() {
+        vmname.set_text("");
+        volume.set_active_id("default");
+        cpu.set_value(1);
+        memory.set_value(1024);
+        block_device_checkbox.set_active();
+        block_device_size.set_value(4);
+        set_create_button_sensitivity();
+    }
+
+    void do_create_new_vm() {
+        auto _vmname = get_vmname_if_proper();
+        if (!_vmname) return; // name not valid
+        const auto& vmname = _vmname.value();
+        std::string volume = this->volume.get_active_id();
+        uint32_t memory = this->memory.get_value_as_int();
+        uint16_t cpu = this->cpu.get_value_as_int();
+        std::optional<uint32_t> data_partition = block_device_checkbox.get_active()? std::make_optional(block_device_size.get_value_as_int()) : std::nullopt;
+        show_message_dialog("仮想マシン" + vmname + "を作成中...", [vmname, volume, memory, cpu, data_partition]() {
+            try {
+                return create_vm(vmname, volume, memory, cpu, data_partition) == 0;
+            }
+            catch (const std::exception& e) {
+                std::cerr << e.what() << std::endl;
+                return false;
+            }
+        }, [this,vmname]() {
+            set_default();
+            show_message_dialog("仮想マシン" + vmname + "が作成されました。開始しますか？", [this,vmname]() {
+                show_message_dialog("仮想マシンを開始中...", [vmname]() {
+                    return call({"systemctl", "start", std::string("vm@") + vmname}) == 0 && is_running(vmname);
+                }, [this,vmname]() {
+                    show_message_dialog(vmname + "を開始しました");
+                    vm_list().reload();
+                }, [this,vmname]() {
+                    show_message_dialog(vmname + "を開始できませんでした", Gtk::MessageType::ERROR);
+                    vm_list().reload();
+                });
+            }, []() {
+                // just reload when not start
+                vm_list().reload();
+            }, Gtk::MessageType::QUESTION);
+        }, [this,vmname]() {
+            show_message_dialog("仮想マシン" + vmname + "を作成できませんでした", Gtk::MessageType::ERROR);
+        });
+    }
+};
+
 class VMPage : public Gtk::Notebook, MessageDialogHolder {
-    Gtk::Stack list_and_operate, create_new;
-    Gtk::Box box, buttons_box, console_box;
+    Gtk::Stack list_and_operate;
+    Gtk::Box box, console_box;
+    Gtk::FlowBox buttons_box;
     Gtk::Label console_label;
     Gtk::TreeView treeview;
     Terminal console_terminal;
-    Gtk::Button reload, start, stop, force_stop, console, _delete, rename, create;
-
-    Glib::RefPtr<Gtk::ListStore> vm_liststore;
+    Gtk::Button reload, start, stop, force_stop, console, _delete, rename, create, autostart_enable, autostart_disable;
 
     pid_t console_pid;
     int console_fd;
@@ -232,65 +557,67 @@ class VMPage : public Gtk::Notebook, MessageDialogHolder {
     std::optional<sigc::connection> io_signal;
     std::optional<std::pair<int,int>> terminal_size;
 
-    class Columns : public Gtk::TreeModelColumnRecord {
-    public:
-        Columns() { add(running); add(autostart); add(name); add(volume); add(cpu); add(memory); add(ip_address); }
-
-        Gtk::TreeModelColumn<bool> running;
-        Gtk::TreeModelColumn<bool> autostart;
-        Gtk::TreeModelColumn<std::string> name;
-        Gtk::TreeModelColumn<std::string> volume;
-        Gtk::TreeModelColumn<std::string> cpu;
-        Gtk::TreeModelColumn<std::string> memory;
-        Gtk::TreeModelColumn<std::string> ip_address;
-    } columns;
+    NewVMPage create_new_page;
 
 public:
     VMPage(Gtk::Window& _parent) : MessageDialogHolder(_parent), 
         console_pid(0), console_fd(-1),
-        box(Gtk::Orientation::VERTICAL) , buttons_box(Gtk::Orientation::HORIZONTAL), console_box(Gtk::Orientation::VERTICAL),
+        box(Gtk::Orientation::VERTICAL), console_box(Gtk::Orientation::VERTICAL), create_new_page(_parent), 
         console_label("コンソールから抜けるには Ctrl+] を押してください"),
         reload("最新の情報に更新(Alt+_R)", true), 
         start("開始(Alt+_T)", true), stop("停止(Alt+_P)", true), force_stop("強制停止(Alt+_K)", true), console("コンソール(Alt+_C)", true),
-        _delete("削除(Alt+_D)", true) {
+        _delete("削除(Alt+_D)", true), autostart_enable("自動起動に設定(Alt+_A)", true), autostart_disable("自動起動を解除(Alt+_U)", true) {
 
         // setup list and operate page
         treeview.set_expand();
-        vm_liststore = Gtk::ListStore::create(columns);
-        treeview.set_model(vm_liststore);
+        treeview.set_model(vm_list());
 
-        treeview.append_column("稼働", columns.running);
-        treeview.append_column("自動起動", columns.autostart);
-        treeview.append_column("名前", columns.name);
-        treeview.append_column("領域", columns.volume);
-        treeview.append_column("CPUコア数", columns.cpu);
-        treeview.append_column("メモリ", columns.memory);
-        treeview.append_column("IPアドレス", columns.ip_address);
+        treeview.append_column("稼働", vm_list().running);
+        treeview.append_column("自動起動", vm_list().autostart);
+        treeview.append_column("名前", vm_list().name);
+        treeview.append_column("領域", vm_list().volume);
+        treeview.append_column("CPUコア数", vm_list().cpu);
+        treeview.append_column("メモリ", vm_list().memory);
+        treeview.append_column("IPアドレス", vm_list().ip_address);
 
         box.append(treeview);
 
-        buttons_box.append(reload);
-        buttons_box.append(start);
-        buttons_box.append(stop);
-        buttons_box.append(force_stop);
-        buttons_box.append(console);
-        buttons_box.append(_delete);
+        reload.signal_clicked().connect([this]() {do_reload();});
+        buttons_box.insert(reload, -1);
+        start.signal_clicked().connect([this]() { on_click_start(); });
+        buttons_box.insert(start, -1);
+        stop.signal_clicked().connect([this]() { on_click_stop(); });
+        buttons_box.insert(stop, -1);
+        force_stop.signal_clicked().connect([this]() { on_click_force_stop(); });
+        buttons_box.insert(force_stop, -1);
+        console.signal_clicked().connect([this]() { on_click_console(); });
+        buttons_box.insert(console, -1);
+        _delete.signal_clicked().connect([this]() { on_click_delete(); });
+        buttons_box.insert(_delete, -1);
+        autostart_enable.signal_clicked().connect([this]() { on_click_autostart_enable(); });
+        buttons_box.insert(autostart_enable, -1);
+        autostart_disable.signal_clicked().connect([this]() { on_click_autostart_disable(); });
+        buttons_box.insert(autostart_disable, -1);
         box.append(buttons_box);
         list_and_operate.add(box, "listview");
 
         // setup console page
         console_box.append(console_label);
         console_terminal.set_expand();
+        console_terminal.signal_open_terminal().connect([this]() {
+            if (console_vmname) fork_console_subprocess(terminal_size->first, terminal_size->second, console_vmname.value());
+        });
+        console_terminal.signal_resize_terminal().connect([this](int cols, int rows) {
+            terminal_size = {cols, rows};
+        });
         console_box.append(console_terminal);
         list_and_operate.add(console_box, "console");
 
         append_page(list_and_operate, "一覧と操作");
 
-        // TODO: setup create page
-        append_page(create_new, "新規作成", "new");
+        // setup create new page
 
-        reload.signal_clicked().connect([this]() {do_reload();});
-
+        append_page(create_new_page, "新規作成", "new");
         treeview.signal_cursor_changed().connect([this](){ on_cursor_change(); });
 
         do_reload();
@@ -310,39 +637,14 @@ public:
         force_stop.set_sensitive(false);
         console.set_sensitive(false);
         _delete.set_sensitive(false);
+        autostart_enable.set_sensitive(false);
+        autostart_enable.show();
+        autostart_disable.set_sensitive(false);
+        autostart_disable.hide();
         treeview.get_selection()->unselect_all();
-        auto vms = list_vm();
-        auto get_or_append = [this](const std::string& name) {
-            auto i = vm_liststore->get_iter("0");
-            while (i) {
-                if (i->get_value(columns.name) == name) return i;
-                i++;
-            }
-            return vm_liststore->append();
-        };
 
-        for (const auto& i:vms) {
-            auto row = get_or_append(i.first);
-            row->set_value(columns.name, i.first);
-            row->set_value(columns.running, i.second.running);
-            row->set_value(columns.autostart, i.second.autostart);
-            row->set_value(columns.volume, i.second.volume.value_or("-"));
-            row->set_value(columns.cpu, i.second.cpu? std::to_string(i.second.cpu.value()) : std::string("-"));
-            row->set_value(columns.memory, i.second.memory? std::to_string(i.second.memory.value()) + "MB" : std::string("-"));
-            row->set_value(columns.ip_address, i.second.ip_address.value_or("-"));
-        }
-
-        // erase vanished vms
-        auto i = vm_liststore->get_iter("0");
-        while (i) {
-            if (vms.find(i->get_value(columns.name)) == vms.end()) {
-                i = vm_liststore->erase(i);
-            } else {
-                i++;
-            }
-        }
-
-        if (vms.size() == 0) set_current_page(1);
+       vm_list().reload();
+       if (vm_list()->children().size() == 0) set_current_page(1);
     }
 
     void fork_console_subprocess(int cols, int rows, const std::string& name)
@@ -382,30 +684,27 @@ public:
 
     virtual void on_realize() {
         Gtk::Notebook::on_realize();
-
-        start.signal_clicked().connect([this]() { on_click_start(); });
-        stop.signal_clicked().connect([this]() { on_click_stop(); });
-        force_stop.signal_clicked().connect([this]() { on_click_force_stop(); });
-        console.signal_clicked().connect([this]() { on_click_console(); });
-        _delete.signal_clicked().connect([this]() { on_click_delete(); });
-
-        console_terminal.signal_open_terminal().connect([this]() {
-            if (console_vmname) fork_console_subprocess(terminal_size->first, terminal_size->second, console_vmname.value());
-        });
-        console_terminal.signal_resize_terminal().connect([this](int cols, int rows) {
-            terminal_size = {cols, rows};
-        });
+        do_reload();
     }
 
     std::optional<std::string> get_selected_vm_name() {
         auto i = treeview.get_selection()->get_selected();
-        return i? std::make_optional(i->get_value(columns.name)) : std::nullopt;
+        return i? std::make_optional(i->get_value(vm_list().name)) : std::nullopt;
     }
 
     void on_cursor_change() {
-        auto selected_rows = treeview.get_selection()->get_selected();
-        if (!selected_rows) return;
-        if (selected_rows->get_value(columns.running)) {
+        auto selected_row = treeview.get_selection()->get_selected();
+        if (!selected_row) {
+            start.set_sensitive(false);
+            stop.set_sensitive(false);
+            force_stop.set_sensitive(false);
+            console.set_sensitive(false);
+            _delete.set_sensitive(false);
+            autostart_disable.set_sensitive(false);
+            autostart_enable.set_sensitive(false);
+            return;
+        }
+        if (selected_row->get_value(vm_list().running)) {
             start.set_sensitive(false);
             stop.set_sensitive(true);
             force_stop.set_sensitive(true);
@@ -417,6 +716,15 @@ public:
             force_stop.set_sensitive(false);
             console.set_sensitive(false);
             _delete.set_sensitive(true);
+        }
+        if (selected_row->get_value(vm_list().autostart)) {
+            autostart_enable.hide();
+            autostart_disable.show();
+            autostart_disable.set_sensitive(true);
+        } else {
+            autostart_disable.hide();
+            autostart_enable.show();
+            autostart_enable.set_sensitive(true);
         }
     }
 
@@ -505,39 +813,55 @@ public:
             // cancelled by user
         });
     }
+
+    void on_click_autostart_enable() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        try {
+            set_autostart(name, true);
+            show_message_dialog(name + "を自動起動に設定しました");
+            do_reload();
+        }
+        catch (const std::exception& e) {
+            show_message_dialog(name + "を自動起動に設定できませんでした:" + e.what(), Gtk::MessageType::ERROR);
+            return;
+        }
+    }
+
+    void on_click_autostart_disable() {
+        auto _name = get_selected_vm_name();
+        if (!_name) return;
+        //else
+        auto name = _name.value();
+        try {
+            set_autostart(name, false);
+            show_message_dialog(name + "の自動起動を解除しました");
+            do_reload();
+        }
+        catch (const std::exception& e) {
+            show_message_dialog(name + "の自動起動を解除できませんでした:" + e.what(), Gtk::MessageType::ERROR);
+            return;
+        }
+    }
 };
 
 class VolumePage : public Gtk::Notebook {
     Gtk::Box buttons_box, create_page;
     Gtk::TreeView treeview;
-
-    Glib::RefPtr<Gtk::ListStore> volume_liststore;
-
-    class Columns : public Gtk::TreeModelColumnRecord {
-    public:
-        Columns() { add(online); add(name); add(path); add(device_or_uuid); add(fstype); add(size); add(free); }
-
-        Gtk::TreeModelColumn<bool> online;
-        Gtk::TreeModelColumn<std::string> name;
-        Gtk::TreeModelColumn<std::string> path;
-        Gtk::TreeModelColumn<std::string> device_or_uuid;
-        Gtk::TreeModelColumn<std::string> fstype;
-        Gtk::TreeModelColumn<std::string> size;
-        Gtk::TreeModelColumn<std::string> free;
-    } columns;
 public:
     VolumePage() {
         treeview.set_expand();
-        volume_liststore = Gtk::ListStore::create(columns);
-        treeview.set_model(volume_liststore);
+        treeview.set_model(volume_list());
 
-        treeview.append_column("オンライン", columns.online);
-        treeview.append_column("名前", columns.name);
-        treeview.append_column("パス", columns.path);
-        treeview.append_column("デバイス名又はUUID", columns.device_or_uuid);
-        treeview.append_column("ファイルシステム", columns.fstype);
-        treeview.append_column("全容量", columns.size);
-        treeview.append_column("空き容量", columns.free);
+        treeview.append_column("オンライン", volume_list().online);
+        treeview.append_column("名前", volume_list().name);
+        treeview.append_column("パス", volume_list().path);
+        treeview.append_column("デバイス名又はUUID", volume_list().device_or_uuid);
+        treeview.append_column("ファイルシステム", volume_list().fstype);
+        treeview.append_column("全容量", volume_list().size);
+        treeview.append_column("空き容量", volume_list().free);
 
         append_page(treeview, "一覧と操作");
         append_page(create_page, "新規作成");
@@ -548,38 +872,7 @@ public:
     void do_reload()
     {
         treeview.get_selection()->unselect_all();
-        auto volumes = volume_list();
-
-        auto get_or_append = [this](const std::string& name) {
-            auto i = volume_liststore->get_iter("0");
-            while (i) {
-                if (i->get_value(columns.name) == name) return i;
-                i++;
-            }
-            return volume_liststore->append();
-        };
-
-        for (const auto& i:volumes) {
-            auto row = get_or_append(i.first);
-            row->set_value(columns.name, i.first);
-            row->set_value(columns.online, i.second.online);
-            row->set_value(columns.path, i.second.path.string());
-            row->set_value(columns.device_or_uuid, i.second.device_or_uuid);
-            row->set_value(columns.fstype, i.second.fstype.value_or("-"));
-            row->set_value(columns.size, i.second.size? human_readable(i.second.size.value()) : std::string("-"));
-            row->set_value(columns.free, i.second.free? human_readable(i.second.free.value()) : std::string("-"));
-        }
-
-        // erase vanished volumes
-        auto i = volume_liststore->get_iter("0");
-        while (i) {
-            if (volumes.find(i->get_value(columns.name)) == volumes.end()) {
-                i = volume_liststore->erase(i);
-            } else {
-                i++;
-            }
-        }
-
+        volume_list().reload();
     }
 };
 

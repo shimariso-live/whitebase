@@ -231,27 +231,27 @@ int write(int fd, const std::string& str)
     return ::write(fd, str.c_str(), str.length());
 }
 
-std::string human_readable(uint64_t size)
+std::string human_readable(uint64_t size, double k/*=1024.0*/)
 {
     char buf[32];
     char au = 'K';
 
-    float s = size / 1024.0;
+    float s = size / k;
     
-    if (s >= 1024.0) {
-        s /= 1024.0;
+    if (s >= k) {
+        s /= k;
         au = 'M';
     }
-    if (s >= 1024.0) {
-        s /= 1024.0;
+    if (s >= k) {
+        s /= k;
         au = 'G';
     }
-    if (s >= 1024.0) {
-        s /= 1024.0;
+    if (s >= k) {
+        s /= k;
         au = 'T';
     }
-    if (s >= 1024.0) {
-        s /= 1024.0;
+    if (s >= k) {
+        s /= k;
         au = 'P';
     }
     sprintf(buf, "%.1f%c", s, au);

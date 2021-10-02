@@ -190,7 +190,7 @@ static int scan(const std::vector<std::string>& args)
     return 0;
 }
 
-std::map<std::string,Volume> volume_list()
+std::map<std::string,Volume> get_volume_list()
 {
     std::map<std::string,Volume> volumes;
     for (const auto& dir : std::filesystem::directory_iterator(vm_root)) {
@@ -230,7 +230,7 @@ std::map<std::string,Volume> volume_list()
 
 static int list(const std::vector<std::string>& args)
 {
-    auto volumes = volume_list();
+    auto volumes = get_volume_list();
     std::shared_ptr<libscols_table> table(scols_new_table(), scols_unref_table);
     if (!table) throw std::runtime_error("scols_new_table() failed");
     scols_table_new_column(table.get(), "ONLINE", 0.1, SCOLS_FL_RIGHT);
