@@ -23,6 +23,7 @@ touch /etc/fstab
 
 acpid
 /sbin/llmnrd -i eth0 -6 -d
+/usr/sbin/avahi-daemon -D
 mkdir -p /etc/dropbear
 dropbear -R
 qemu-ga -p /dev/vport0p1 -d

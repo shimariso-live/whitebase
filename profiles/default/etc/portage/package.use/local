@@ -51,7 +51,7 @@ dev-vcs/git -perl -gpg -python
 
 # networks
 net-analyzer/net-snmp -python
-net-dns/avahi -introspection dbus
+net-dns/avahi -dbus -gdbm ipv6 -nls -systemd -introspection
 net-wireless/wpa_supplicant dbus
 net-dns/dnsmasq dhcp-tools script
 net-misc/dropbear -pam -shadow -syslog -zlib minimal

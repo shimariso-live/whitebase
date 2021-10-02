@@ -55,8 +55,8 @@ if [ ! -d /lib64 ]; then
 fi
 
 # setup stubroot
-lddtree -l /bin/busybox /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
-echo -e '/sbin/ldconfig\n/usr/share/udhcpc/default.script' >> /tmp/stubroot-files
+lddtree -l /bin/busybox /bin/bash /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/sbin/avahi-daemon /usr/bin/wg /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
+echo -e '/sbin/ldconfig\n/usr/share/udhcpc/default.script\n/usr/bin/wg-quick' >> /tmp/stubroot-files
 rsync -L --files-from=/tmp/stubroot-files / $STUBROOT
 
 # debootstrap, rpm
@@ -64,6 +64,9 @@ mkdir -p $STUBROOT/usr/sbin $STUBROOT/usr/share $STUBROOT/usr/lib64 $STUBROOT/us
 cp -a /usr/sbin/debootstrap $STUBROOT/usr/sbin/
 cp -a /usr/share/debootstrap $STUBROOT/usr/share/
 cp -a /usr/libexec/rpm $STUBROOT/usr/libexec/
+
+# zoneinfo
+cp -a /usr/share/zoneinfo $STUBROOT/usr/share/
 
 mkdir -p /var/vm/\@default
 

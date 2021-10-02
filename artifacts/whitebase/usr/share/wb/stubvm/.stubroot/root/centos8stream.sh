@@ -34,15 +34,31 @@ echo -e 'linux /boot/vmlinuz root=/dev/vda ro crashkernel=auto net.ifnames=0 con
 
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
 
+cp -a /sbin/llmnrd /mnt/usr/sbin/
+cat <<EOF > /mnt/etc/systemd/system/llmnrd.service
+[Unit]
+Description=Link-Local Multicast Name Resolution Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/llmnrd -6
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 oldpath=`pwd`
 cd /mnt/boot
 ln -s */*/linux vmlinuz
 ln -s */*/initrd initramfs
 cd $oldpath
 chroot /mnt dnf install -y qemu-guest-agent https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm
-chroot /mnt systemctl enable sshd avahi-daemon qemu-guest-agent
+chroot /mnt systemctl enable sshd avahi-daemon llmnrd qemu-guest-agent
 
 umount /mnt/proc
 umount /mnt
+rm -rf /.real_root/boot /.real_root/etc
 
 poweroff

@@ -14,6 +14,8 @@ sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
 echo -e '/dev/vda /                       btrfs     defaults        1 1' > /mnt/etc/fstab
 echo -e 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    eth0:\n      dhcp4: true\n      dhcp6: true' > /mnt/etc/netplan/99_config.yaml
 
+[ -f /etc/localtime ] && cp -a /etc/localtime /mnt/etc/
+
 cp -a /root/.ssh /mnt/root/
 
 umount /mnt/proc
