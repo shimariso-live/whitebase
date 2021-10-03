@@ -431,7 +431,7 @@ int vm(const std::string& name)
     }
 
     // load NIC config
-    std::vector<std::tuple<std::optional<std::string>/*bridge*/,std::optional<std::string>/*mac*/>> nics;
+    std::vector<std::tuple<std::optional<std::string>/*bridge*/,std::optional<std::string>/*mac*/,bool/*vhost*/>> nics;
     for (int i = 0; i < 10; i++) {
         char buf[16];
         sprintf(buf, "net%d", i);
@@ -449,10 +449,12 @@ int vm(const std::string& name)
             std::cerr << "MAC address '" << mac << "' invalid. network interface ignored." << std::endl;
             continue;
         }
-        nics.push_back({bridge? std::optional(bridge) : std::nullopt, mac? std::optional(mac) : std::nullopt});
+        sprintf(buf, "net%d:vhost", i);
+        bool vhost = (bool)iniparser_getboolean(ini.get(), buf, 1);
+        nics.push_back({bridge? std::optional(bridge) : std::nullopt, mac? std::optional(mac) : std::nullopt, vhost});
     }
     if (nics.size() == 0) {
-        nics.push_back({default_bridge? std::optional(default_bridge) : std::nullopt, std::nullopt});
+        nics.push_back({default_bridge? std::optional(default_bridge) : std::nullopt, std::nullopt, false});
     }
 
     // load USB config
@@ -607,15 +609,17 @@ int vm(const std::string& name)
     int nic_idx = 0;
     for (const auto& nic:nics) {
         auto bridge = std::get<0>(nic);
+        auto vhost = std::get<2>(nic);
+        auto netdev = "net" + std::to_string(nic_idx);
         if (bridge.has_value()) {
             qemu_cmdline.push_back("-netdev");
-            qemu_cmdline.push_back("bridge,br=" + bridge.value() + ",id=net" + std::to_string(nic_idx));
+            qemu_cmdline.push_back("tap,id=" + netdev + ",br=" + bridge.value() + ",helper=/usr/libexec/qemu-bridge-helper" + (vhost? ",vhost=on" : ""));
         } else {
             qemu_cmdline.push_back("-netdev");
-            qemu_cmdline.push_back("user,id=net" + std::to_string(nic_idx));
+            qemu_cmdline.push_back("user,id=" + netdev);
         }
         qemu_cmdline.push_back("-device");
-        qemu_cmdline.push_back("virtio-net-pci,romfile=,netdev=net" + std::to_string(nic_idx) + ",mac=" + std::get<1>(nic).value_or(get_or_generate_mac_address(name, nic_idx)));
+        qemu_cmdline.push_back("virtio-net-pci,romfile=,netdev=" + netdev + ",mac=" + std::get<1>(nic).value_or(get_or_generate_mac_address(name, nic_idx)));
         nic_idx++;
     }
 
