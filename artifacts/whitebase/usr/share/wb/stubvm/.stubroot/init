@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-mkdir -p /etc /dev /proc /sys /run /var/log
+mkdir -p /etc /dev /proc /sys /run /var/log /tmp
 touch /var/log/lastlog
 mount -t proc -o noexec,nosuid,nodev proc /proc
 mount -t sysfs sysfs /sys
