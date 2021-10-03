@@ -2,3 +2,8 @@
 @genpack-install
 @debug
 app-emulation/xen-tools
+
+# stubvm
+net-dns/avahi
+app-emulation/qemu-guest-agent
+sys-apps/busybox

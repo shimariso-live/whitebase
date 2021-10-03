@@ -85,6 +85,7 @@ app-benchmarks/stress
 sys-apps/rng-tools
 app-arch/zip
 net-misc/dropbear
+sys-apps/memtest86+
 
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
@@ -102,9 +103,6 @@ app-admin/logrotate
 app-arch/rpm
 dev-util/debootstrap
 app-emulation/qemu
-app-emulation/qemu-guest-agent
-
-dev-python/requests # for rpmbootstrap
 
 # gtk4
 dev-cpp/gtkmm
@@ -113,9 +111,4 @@ virtual/freedesktop-icon-theme
 # wb
 dev-libs/yajl
 media-gfx/qrencode
-sys-apps/busybox
-
-# stubvm
-net-dns/avahi
-
 

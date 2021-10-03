@@ -157,13 +157,13 @@ int grub_mkimage(const std::filesystem::path& boot_partition_dir)
     return call({"grub-mkimage", "-p", "/boot/grub", "-o", (efi_boot / "bootx64.efi").string(), "-O", "x86_64-efi", 
         "xfs","btrfs","fat","part_gpt","part_msdos","normal","linux","echo","all_video","test","multiboot","multiboot2","search","sleep","iso9660","gzio",
         "lvm","chain","configfile","cpuid","minicmd","gfxterm_background","png","font","terminal","squash4","serial","loopback","videoinfo","videotest",
-        "blocklist","probe","efi_gop","efi_uga", "keystatus"});
+        "blocklist","probe","efi_gop","efi_uga"/*, "keystatus"*/});
 }
 
 int grub_install(const std::filesystem::path& boot_partition_dir, const std::filesystem::path& disk)
 {
     return call({"grub-install", "--target=i386-pc", "--recheck", std::string("--boot-directory=") + (boot_partition_dir / "boot").string(),
-        "--modules=xfs btrfs fat part_msdos normal linux echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal serial squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
+        "--modules=xfs btrfs fat part_msdos normal linux linux16 echo all_video test multiboot multiboot2 search sleep gzio lvm chain configfile cpuid minicmd font terminal serial squash4 loopback videoinfo videotest blocklist probe gfxterm_background png keystatus",
         disk.string()});
 }
 

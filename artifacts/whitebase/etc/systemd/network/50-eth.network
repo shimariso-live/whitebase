@@ -1,5 +1,5 @@
 [Match]
-Name=eth*
+Name=en*
 [Network]
 Bridge=br0
 [Link]
