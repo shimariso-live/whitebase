@@ -144,8 +144,8 @@ static std::string encrypt(const std::string& str, EVP_PKEY* privkey/*mine*/, EV
 
 static std::string pubkey_bytes_to_address(const uint8_t* pubkey_bytes)
 {
-    char buf[4*8+7+4+1];
-    sprintf(buf, "fd%02x:%04x:%04x:%04x:%04x:%04x:%04x:%04x/128", 
+    char buf[4*8+7+1];
+    sprintf(buf, "fd%02x:%04x:%04x:%04x:%04x:%04x:%04x:%04x", 
         (int)pubkey_bytes[0], 
         (((int)pubkey_bytes[1]) << 8) | pubkey_bytes[2], 
         (((int)pubkey_bytes[3]) << 8) | pubkey_bytes[4],
@@ -286,7 +286,8 @@ int authorize(int argc, char* argv[])
     yajl_gen_string(gen.get(), (const unsigned char*)my_address, strlen(my_address));
     yajl_gen_string(gen.get(), (const unsigned char*)"address", 7);
     auto address = pubkey_bytes_to_address(peer_pubkey_bytes.first.get());
-    yajl_gen_string(gen.get(), (const unsigned char*)address.c_str(), address.length());
+    auto address_with_length = address + "/128";
+    yajl_gen_string(gen.get(), (const unsigned char*)address_with_length.c_str(), address_with_length.length());
     if (sshkey) {
         yajl_gen_string(gen.get(), (const unsigned char*)"ssh-key", 7);
         yajl_gen_string(gen.get(), (const unsigned char*)sshkey.value().c_str(), sshkey.value().length());
@@ -314,7 +315,8 @@ int authorize(int argc, char* argv[])
     if (serial) {
         std::ofstream f(serial_dir / serial.value());
         if (!f) throw std::runtime_error("serial file couldn't be open for write");
-        f << peer_pubkey_b64;
+        f << peer_pubkey_b64 << std::endl;
+        f << address << std::endl;
     }
 
     std::cout << "Client authorized successfully." << std::endl;
@@ -456,7 +458,7 @@ int load(int argc, char* argv[])
         if (present_peers.find(pubkey_b64) == present_peers.end()) {
             auto pubkey_bytes = base64_decode(pubkey_b64);
             auto address = pubkey_bytes_to_address(pubkey_bytes.first.get());
-            check_call({"wg", "set", interface, "peer", pubkey_b64, "allowed-ips", address});
+            check_call({"wg", "set", interface, "peer", pubkey_b64, "allowed-ips", address + "/128"});
         } else {
             present_peers.erase(pubkey_b64);
         }
@@ -510,61 +512,20 @@ static struct in6_addr lookup(const std::string& hostname)
 {
     if (!std::filesystem::exists(serial_dir / hostname)) throw NSS_STATUS_NOTFOUND;
 
-    std::string peer_pubkey_b64;
+    std::string address;
 
     {
         std::ifstream f(serial_dir / hostname);
         if (!f) throw NSS_STATUS_NOTFOUND;
 
-        f >> peer_pubkey_b64;
+        f >> address; // skip pubkey
+        f >> address;
     }
 
-    auto client_file = public_dir / make_urlsafe(peer_pubkey_b64);
-
-    auto peer_pubkey_bytes = base64_decode(peer_pubkey_b64);
-    std::shared_ptr<EVP_PKEY> peer_pubkey(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL, peer_pubkey_bytes.first.get(), std::min(WG_KEY_LEN, peer_pubkey_bytes.second)), EVP_PKEY_free);
-    if (!peer_pubkey) throw NSS_STATUS_NOTFOUND;
-
-    std::shared_ptr<dictionary> wg_conf(iniparser_load(wg_conf_path.c_str()), iniparser_freedict);
-    if (!wg_conf) throw NSS_STATUS_NOTFOUND;
-    // else
-    auto privkey_base64 = iniparser_getstring(wg_conf.get(), "interface:PrivateKey", NULL);
-    if (!privkey_base64) throw NSS_STATUS_NOTFOUND;
-    //else
-    auto privkey_bytes = base64_decode(privkey_base64);
-    auto privkey = std::shared_ptr<EVP_PKEY>(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, privkey_bytes.first.get(), std::min(WG_KEY_LEN, privkey_bytes.second)), EVP_PKEY_free);
-    if (!privkey) throw NSS_STATUS_NOTFOUND;
-
-    std::ifstream f(client_file);
-    if (!f) throw NSS_STATUS_NOTFOUND;
-    //else
-    std::string line;
-    f >> line;
-    auto comma_pos = line.find_first_of(',');
-    if (comma_pos != line.npos) line.erase(line.begin(), line.begin() + comma_pos + 1);
-
-    auto decrypted = decrypt(line, privkey.get(), peer_pubkey.get());
-
-    char errorbuf[1024];
-    std::shared_ptr<yajl_val_s> tree(yajl_tree_parse(decrypted.c_str(), errorbuf, sizeof(errorbuf)), yajl_tree_free);
-    if (!tree) throw NSS_STATUS_NOTFOUND;
-    if (!YAJL_IS_OBJECT(tree)) throw NSS_STATUS_NOTFOUND;
-
-    auto obj = get<std::map<std::string,yajl_val>>(tree.get());
-    if (!obj.contains("address")) throw NSS_STATUS_NOTFOUND;
-
-    auto addr_val = obj.at("address");
-    if (!YAJL_IS_STRING(addr_val)) throw NSS_STATUS_NOTFOUND;
-
-    auto addr_str = get<std::string>(addr_val);
-
-    auto slash_pos = addr_str.find('/');
-    if (slash_pos != addr_str.npos) {
-        addr_str.resize(slash_pos);
-    }
+    if (address == "") throw NSS_STATUS_NOTFOUND;
 
     struct in6_addr addr;
-    if (inet_pton(AF_INET6, addr_str.c_str(), &addr) != 1) {
+    if (inet_pton(AF_INET6, address.c_str(), &addr) != 1) {
         throw NSS_STATUS_NOTFOUND;
     }
     //else
