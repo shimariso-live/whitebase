@@ -1,27 +1,40 @@
+#include <filesystem>
+#include <cassert>
+#include <fstream>
+
+#include <iniparser4/iniparser.h>
+#include <yajl/yajl_gen.h>
+
+#include "crypt.h"
+#include "yajl_value.h"
+
+#ifndef NSS_MODULE
 #include <memory.h>
 #include <getopt.h>
 #include <sys/wait.h>
 
 #include <iostream>
-#include <fstream>
-#include <string>
 #include <vector>
 #include <map>
 #include <set>
 #include <functional>
 #include <optional>
 #include <variant>
-#include <filesystem>
 #include <ext/stdio_filebuf.h> // for __gnu_cxx::stdio_filebuf
 
-#include <iniparser4/iniparser.h>
-#include <yajl/yajl_gen.h>
-
 #include "common.h"
-#include "crypt.h"
+
+#else // NSS_MODULE
+#include <string.h>
+#include <nss.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#endif
 
 static const std::filesystem::path wg_conf_path("/etc/wireguard/wg-walbrix.conf"), data_dir("/var/lib/wg-walbrix");
 static const std::filesystem::path public_dir = data_dir / "public", serial_dir = data_dir / "serial";
+
+#ifndef NSS_MODULE
 static const std::filesystem::path endpoint_hostname_file = data_dir / "endpoint_hostname";
 static const std::string interface("wg-walbrix");
 static const std::string network_prefix("fd00::/8");
@@ -415,7 +428,7 @@ int load(int argc, char* argv[])
     auto my_address = iniparser_getstring(wg_conf.get(), "interface:Address", NULL);
     if (!my_address) throw std::runtime_error("Address is not defined in " + wg_conf_path.string());
 
-    check_call({"ip", "-6", "address", "replace", network_prefix, "dev", interface});
+    check_call({"ip", "route", "replace", network_prefix, "dev", interface});
 
     auto [pid, in] = forkinput([]() {
         exec({"wg", "show", interface, "peers"});
@@ -491,6 +504,215 @@ int main(int argc, char* argv[])
     }
     return -1;
 }
+
+#else // NSS_MODULE
+static struct in6_addr lookup(const std::string& hostname)
+{
+    if (!std::filesystem::exists(serial_dir / hostname)) throw NSS_STATUS_NOTFOUND;
+
+    std::string peer_pubkey_b64;
+
+    {
+        std::ifstream f(serial_dir / hostname);
+        if (!f) throw NSS_STATUS_NOTFOUND;
+
+        f >> peer_pubkey_b64;
+    }
+
+    auto client_file = public_dir / make_urlsafe(peer_pubkey_b64);
+
+    auto peer_pubkey_bytes = base64_decode(peer_pubkey_b64);
+    std::shared_ptr<EVP_PKEY> peer_pubkey(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, NULL, peer_pubkey_bytes.first.get(), std::min(WG_KEY_LEN, peer_pubkey_bytes.second)), EVP_PKEY_free);
+    if (!peer_pubkey) throw NSS_STATUS_NOTFOUND;
+
+    std::shared_ptr<dictionary> wg_conf(iniparser_load(wg_conf_path.c_str()), iniparser_freedict);
+    if (!wg_conf) throw NSS_STATUS_NOTFOUND;
+    // else
+    auto privkey_base64 = iniparser_getstring(wg_conf.get(), "interface:PrivateKey", NULL);
+    if (!privkey_base64) throw NSS_STATUS_NOTFOUND;
+    //else
+    auto privkey_bytes = base64_decode(privkey_base64);
+    auto privkey = std::shared_ptr<EVP_PKEY>(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, privkey_bytes.first.get(), std::min(WG_KEY_LEN, privkey_bytes.second)), EVP_PKEY_free);
+    if (!privkey) throw NSS_STATUS_NOTFOUND;
+
+    std::ifstream f(client_file);
+    if (!f) throw NSS_STATUS_NOTFOUND;
+    //else
+    std::string line;
+    f >> line;
+    auto comma_pos = line.find_first_of(',');
+    if (comma_pos != line.npos) line.erase(line.begin(), line.begin() + comma_pos + 1);
+
+    auto decrypted = decrypt(line, privkey.get(), peer_pubkey.get());
+
+    char errorbuf[1024];
+    std::shared_ptr<yajl_val_s> tree(yajl_tree_parse(decrypted.c_str(), errorbuf, sizeof(errorbuf)), yajl_tree_free);
+    if (!tree) throw NSS_STATUS_NOTFOUND;
+    if (!YAJL_IS_OBJECT(tree)) throw NSS_STATUS_NOTFOUND;
+
+    auto obj = get<std::map<std::string,yajl_val>>(tree.get());
+    if (!obj.contains("address")) throw NSS_STATUS_NOTFOUND;
+
+    auto addr_val = obj.at("address");
+    if (!YAJL_IS_STRING(addr_val)) throw NSS_STATUS_NOTFOUND;
+
+    auto addr_str = get<std::string>(addr_val);
+
+    auto slash_pos = addr_str.find('/');
+    if (slash_pos != addr_str.npos) {
+        addr_str.resize(slash_pos);
+    }
+
+    struct in6_addr addr;
+    if (inet_pton(AF_INET6, addr_str.c_str(), &addr) != 1) {
+        throw NSS_STATUS_NOTFOUND;
+    }
+    //else
+    return addr;
+}
+
+#define ALIGN(a) (((a+sizeof(void*)-1)/sizeof(void*))*sizeof(void*))
+
+static enum nss_status fill_in_hostent(
+				const char *hn,
+                struct hostent *result,
+                char *buffer, size_t buflen,
+                int *errnop, int *h_errnop,
+				int32_t *ttlp,
+                char **canonp,
+				const struct in6_addr& addr) {
+
+	size_t alen = sizeof(in6_addr);
+
+	size_t l = strlen(hn);
+	size_t ms = ALIGN(l+1)+sizeof(char*)+ALIGN(alen)+sizeof(char*)*2;
+	if (buflen < ms) {
+		*errnop = ENOMEM;
+		*h_errnop = NO_RECOVERY;
+		return NSS_STATUS_TRYAGAIN;
+	}
+
+	/* First, fill in hostname */
+	char* r_name = buffer;
+	memcpy(r_name, hn, l+1);
+	size_t idx = ALIGN(l+1);
+
+	/* Second, create aliases array */
+	char* r_aliases = buffer + idx;
+	*(char**) r_aliases = NULL;
+	idx += sizeof(char*);
+
+	/* Third, add address */
+	char* r_addr = buffer + idx;
+	*(struct in6_addr*) r_addr = addr;
+	idx += ALIGN(alen);
+
+	/* Fourth, add address pointer array */
+	char* r_addr_list = buffer + idx;
+	((char**) r_addr_list)[0] = r_addr;
+	((char**) r_addr_list)[1] = NULL;
+	idx += sizeof(char*)*2;
+
+	/* Verify the size matches */
+	assert(idx == ms);
+
+	result->h_name = r_name;
+	result->h_aliases = (char**) r_aliases;
+	result->h_addrtype = AF_INET6;
+	result->h_length = alen;
+	result->h_addr_list = (char**) r_addr_list;
+
+	if (ttlp) *ttlp = 0;
+	if (canonp) *canonp = r_name;
+
+	return NSS_STATUS_SUCCESS;
+}
+
+extern "C" {
+enum nss_status _nss_wg_walbrix_gethostbyname3_r(
+                const char *name,
+                int af,
+                struct hostent *host,
+                char *buffer, size_t buflen,
+                int *errnop, int *h_errnop,
+                int32_t *ttlp,
+                char **canonp) {
+	//std::cout << "_nss_openvpn_gethostbyname3_r" << std::endl;
+
+	if (af == AF_UNSPEC) af = AF_INET6;
+
+	if (af != AF_INET6) {
+		*errnop = EAFNOSUPPORT;
+		*h_errnop = NO_DATA;
+		return NSS_STATUS_UNAVAIL;
+	}
+
+	try {
+		auto addr = lookup(name);
+		return fill_in_hostent(name, host, buffer, buflen, errnop, h_errnop, ttlp, canonp, addr);
+	}
+	catch (enum nss_status& st) {
+		if (st == NSS_STATUS_NOTFOUND) {
+			*errnop = ENOENT;
+			*h_errnop = HOST_NOT_FOUND;
+		} else if (st == NSS_STATUS_TRYAGAIN) {
+			*errnop = EINVAL;
+			*h_errnop = NO_RECOVERY;
+		} else {
+			*errnop = EINVAL;
+			*h_errnop = NO_RECOVERY;
+		}
+		return st;
+	}
+}
+
+enum nss_status _nss_wg_walbrix_gethostbyname2_r(
+                const char *name,
+                 int af,
+                 struct hostent *host,
+                char *buffer, size_t buflen,
+                 int *errnop, int *h_errnop) {
+ 
+         return _nss_wg_walbrix_gethostbyname3_r(
+                         name,
+                         af,
+                         host,
+                         buffer, buflen,
+                         errnop, h_errnop,
+                         NULL,
+                         NULL);
+}
+
+enum nss_status _nss_wg_walbrix_gethostbyname_r(
+	const char *name,
+	struct hostent* host,
+	char *buffer, size_t buflen,
+	int *errnop, int *h_errnop
+	) {
+
+	//std::cout << "_nss_wg_walbrix_gethostbyname_r" << std::endl;
+
+	try {
+		auto addr = lookup(name);
+		return fill_in_hostent(name, host, buffer, buflen, errnop, h_errnop, NULL, NULL, addr);
+	}
+	catch (enum nss_status& st) {
+		if (st == NSS_STATUS_NOTFOUND) {
+			*errnop = ENOENT;
+			*h_errnop = HOST_NOT_FOUND;
+		} else if (st == NSS_STATUS_TRYAGAIN) {
+			*errnop = EINVAL;
+			*h_errnop = NO_RECOVERY;
+		} else {
+			*errnop = EINVAL;
+			*h_errnop = NO_RECOVERY;
+		}
+		return st;
+	}
+
+}
+} // extern "C"
+#endif
 
 /*
 #etc/systemd/system/wg-walbrix.service

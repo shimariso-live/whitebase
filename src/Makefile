@@ -26,6 +26,9 @@ wb: wb.cpp libproj.a
 wg-walbrix: wg-walbrix.cpp crypt.o common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lyajl -lcurl -lssl -lcrypto -liniparser4 -lutil
 
+libnss_wg_walbrix.so: wg-walbrix.cpp crypt.cpp
+	g++ $(CXXFLAGS) -o $@ -D NSS_MODULE $^ -fPIC -shared -Wl,-soname,libnss_wg_walbrix.so.2 -lyajl -lssl -lcrypto -liniparser4
+
 vm: vm.cpp common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lmount -lsystemd -liniparser4 -luuid -lutil -lyajl -lcurl -lblkid
 

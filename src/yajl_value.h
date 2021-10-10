@@ -1,4 +1,5 @@
 #include <string.h>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <functional>
