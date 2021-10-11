@@ -1,0 +1,12 @@
+[Unit]
+Description=Status beep message
+After=sshd.service
+
+[Service]
+Type=oneshot
+ExecStart=beep -f 440 -n -f 660
+ExecStop=beep -f 660 -n -f 440
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
