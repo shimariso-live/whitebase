@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#include <optional>
 #include <vector>
 #include <string>
 #include <functional>
