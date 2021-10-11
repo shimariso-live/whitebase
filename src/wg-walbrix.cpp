@@ -510,12 +510,24 @@ int main(int argc, char* argv[])
 #else // NSS_MODULE
 static struct in6_addr lookup(const std::string& hostname)
 {
-    if (!std::filesystem::exists(serial_dir / hostname)) throw NSS_STATUS_NOTFOUND;
+    std::optional<std::filesystem::path> serial_file = std::nullopt;
+    for (const auto& entry : std::filesystem::directory_iterator(serial_dir)) {
+        if (!entry.is_regular_file()) continue;
+        const auto& serial = entry.path().filename().string();
+        if (std::equal(serial.begin(), serial.end(), hostname.begin(), hostname.end(), [](char c1, char c2) {
+            return std::tolower(c1) == std::tolower(c2);
+        })) {
+            serial_file = entry.path();
+            break;
+        }
+    }
+
+    if (!serial_file) throw NSS_STATUS_NOTFOUND;
 
     std::string address;
 
     {
-        std::ifstream f(serial_dir / hostname);
+        std::ifstream f(serial_file.value());
         if (!f) throw NSS_STATUS_NOTFOUND;
 
         f >> address; // skip pubkey
