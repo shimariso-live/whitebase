@@ -1,7 +1,7 @@
 [Unit]
 Description=Virtual Machine for %I
 Requires=scan-volumes.service
-After=scan-volumes.service
+After=scan-volumes.service network-online.target
 
 [Service]
 Type=notify
