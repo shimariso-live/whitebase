@@ -2,3 +2,4 @@
 >=dev-lang/python-3.10
 x11-libs/gtk+
 <dev-cpp/gtkmm-4
+>=x11-libs/pango-1.48.7 # due to circular dep of harfbuzz and freetype
