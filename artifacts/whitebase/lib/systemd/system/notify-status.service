@@ -4,7 +4,7 @@ After=wg-quick@wg-walbrix.service ldconfig.service
 
 [Service]
 Type=oneshot
-ExecStart=wb wg-notify /%H/start
+ExecStart=wb wg-notify /%H/start?version=%A
 ExecStop=wb wg-notify /%H/stop
 RemainAfterExit=yes
 
