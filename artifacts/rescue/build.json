@@ -1,0 +1,5 @@
+{
+	"compression":"xz",
+	"profile":"rescue",
+	"packages":["@rescue","@genpack-install"]
+}

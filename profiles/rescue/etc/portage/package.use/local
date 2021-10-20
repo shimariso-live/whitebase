@@ -1,0 +1,41 @@
+sys-boot/grub device-mapper grub_platforms_efi-64 grub_platforms_pc
+sys-auth/pambase -passwdqc
+sys-apps/busybox -pam -systemd
+
+sys-kernel/gentoo-sources symlink
+
+# to force rebuild systemd
+sys-apps/systemd -acl static-libs
+
+sys-apps/util-linux static-libs -python
+virtual/libudev static-libs
+
+app-editors/vim minimal -python
+
+dev-lang/python sqlite
+net-fs/cifs-utils -acl -ads -caps 
+app-admin/testdisk ntfs
+app-admin/sudo -sendmail pam
+sys-apps/smartmontools minimal
+net-fs/nfs-utils -tcpd
+sys-apps/kmod lzma -python
+sys-libs/ncurses tinfo
+sys-fs/lvm2 -readline systemd -thin udev
+net-misc/rsync xxhash
+
+# networks
+net-wireless/wpa_supplicant dbus
+
+# assume EC algorythms are safe
+dev-libs/openssl -bindist
+net-misc/openssh -bindist
+net-wireless/wpa_supplicant -bindist
+
+# strip python dependency
+app-misc/pax-utils -python
+sys-apps/usbutils -python
+sys-fs/btrfs-progs -python
+sys-apps/file -python
+sys-libs/cracklib -python
+dev-libs/libnl -python
+sys-libs/libcap-ng -python

@@ -1,0 +1,3 @@
+sys-kernel/linux-firmware no-source-code linux-fw-redistributable
+sys-block/megacli LSI
+net-analyzer/nmap NPSL

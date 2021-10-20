@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+VERSION=`file -L /boot/kernel| sed 's/^.\+ version \([^ ]\+\)\s.\+$/\1/'|sed 's/-gentoo//'`
+sed -i "s/__VERSION__/$VERSION/g" /boot/grub/grub.cfg /etc/os-release
+mkdir /.genpack
+echo $VERSION > /.genpack/version
+
+g++ -std=c++2a -o /usr/sbin/genpack-install /usr/src/genpack-install.cpp -lmount -lblkid
+
+ln -sf /run/initramfs/boot /root/boot
