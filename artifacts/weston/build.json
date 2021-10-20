@@ -1,5 +1,6 @@
 {
 	"profile":"paravirt",
-	"packages":["@weston","@common","qemu-guest-agent"]
+	"packages":["@weston","@common","@chrome"],
+	"services":["qemu-guest-agent"]
 }
 

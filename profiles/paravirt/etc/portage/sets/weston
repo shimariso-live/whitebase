@@ -7,5 +7,6 @@ x11-themes/gnome-themes-standard
 x11-themes/adwaita-icon-theme
 x11-themes/hicolor-icon-theme
 app-editors/gedit
-www-client/epiphany
-
+app-arch/deb2targz
+net-misc/curl
+sys-auth/oath-toolkit
