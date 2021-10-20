@@ -1,0 +1,12 @@
+diff -ru a/src/network/networkd-wifi.c b/src/network/networkd-wifi.c
+--- a/src/network/networkd-wifi.c	2021-07-23 18:59:26.000000000 +0900
++++ b/src/network/networkd-wifi.c	2021-09-01 10:53:45.152215430 +0900
+@@ -38,7 +38,7 @@
+ 
+         r = wifi_get_interface(link->manager->genl, link->ifindex, &iftype, &ssid);
+         if (r < 0)
+-                return r;
++                return 0;
+         if (r == 0)
+                 iftype = link->wlan_iftype; /* Assume iftype is not changed. */
+ 

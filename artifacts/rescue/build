@@ -8,3 +8,8 @@ echo $VERSION > /.genpack/version
 g++ -std=c++2a -o /usr/sbin/genpack-install /usr/src/genpack-install.cpp -lmount -lblkid
 
 ln -sf /run/initramfs/boot /root/boot
+
+sed -i 's/^#PermitEmptyPasswords no$/PermitEmptyPasswords yes/' /etc/ssh/sshd_config
+sed -i 's/^#PermitRootLogin prohibit-password$/PermitRootLogin yes/' /etc/ssh/sshd_config
+sed -i 's/\suse_authtok\s/ /' /etc/pam.d/system-auth
+
