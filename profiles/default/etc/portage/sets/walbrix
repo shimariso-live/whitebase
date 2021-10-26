@@ -86,6 +86,7 @@ sys-apps/rng-tools
 app-arch/zip
 net-misc/dropbear
 sys-apps/memtest86+
+app-backup/rdiff-backup
 
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
