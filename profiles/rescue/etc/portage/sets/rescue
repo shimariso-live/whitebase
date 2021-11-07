@@ -62,6 +62,7 @@ net-misc/taylor-uucp
 net-misc/bridge-utils
 app-misc/tmux
 net-misc/socat
+net-misc/ndisc6
 app-arch/zip
 sys-apps/memtest86+
 

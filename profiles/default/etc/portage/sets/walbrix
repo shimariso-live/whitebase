@@ -68,6 +68,7 @@ net-dialup/rp-pppoe
 net-dialup/ppp-scripts
 net-analyzer/nmap
 net-analyzer/snort
+net-misc/ndisc6
 mail-mta/ssmtp
 net-vpn/openvpn
 dev-vcs/git
