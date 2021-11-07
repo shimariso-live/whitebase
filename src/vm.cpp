@@ -197,7 +197,7 @@ void create_bootimage(const std::filesystem::path& bootimage_path, const std::st
             grub_cfg << "  set root=loop" << std::endl;
             grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
             grub_cfg << "elif [ -f (hd2)/boot/kernel ]; then" << std::endl;
-            grub_cfg << "  linux (hd2)/boot/kernel net.ifnames=0 console=ttyS0,115200n8r console=tty0 systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
+            grub_cfg << "  linux (hd2)/boot/kernel net.ifnames=0 console=tty0 console=ttyS0,115200n8r systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
             grub_cfg << "  initrd (hd2)/boot/initramfs" << std::endl;
             grub_cfg << "  boot" << std::endl;
             grub_cfg << "fi" << std::endl;
@@ -530,7 +530,11 @@ int vm(const std::string& name)
         "-device", "virtio-serial", "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
     };
 
-    if (kvm) qemu_cmdline.push_back("-enable-kvm");
+    if (kvm) {
+        qemu_cmdline.push_back("-enable-kvm");
+        qemu_cmdline.push_back("-cpu");
+        qemu_cmdline.push_back("host");
+    }
 
     if (rtc) {
         qemu_cmdline.push_back("-rtc");
@@ -840,7 +844,10 @@ int vm_nspawn(const std::string& name)
     struct utsname u_name;
     if (uname(&u_name) < 0) throw std::runtime_error("uname() failed");
 
-    std::vector<std::string> nspawn_cmdline = {"systemd-nspawn", "-b", std::string("--hostname=") + name, "--register=no",
+    std::vector<std::string> nspawn_cmdline = {
+            "systemd-nspawn", "-b", "-M", name, 
+            "--hostname=" + name, 
+            "--register=no",
             "--uuid=" + get_or_generate_uuid(name), 
             "--capability=CAP_SYS_MODULE", std::string("--bind-ro=/lib/modules/") + u_name.release, "--bind-ro=/sys/module/"};
     if (bridge) {
@@ -870,6 +877,9 @@ int vm_nspawn(const std::string& name)
         std::cout << std::endl;
     }
     return with_vm_lock<int>(name, [&]() -> int {
+        auto ld_so_cache = fs_dir / "etc/ld.so.cache";
+        if (std::filesystem::exists(ld_so_cache)) std::filesystem::remove(ld_so_cache);
+
         int sigfd = -1;
         pid_t nspawn_pid = 0;
         int nspawn_fd = -1;
