@@ -77,7 +77,7 @@ app-text/poppler cjk png tiff cairo
 x11-base/xorg-drivers -video_cards_amdgpu dummy fbdev -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi -video_cards_vesa
 x11-base/xorg-server wayland
 media-fonts/noto cjk
-net-misc/freerdp jpeg server -ffmpeg
+net-misc/freerdp jpeg server -ffmpeg openh264
 net-misc/tigervnc server
 dev-libs/libpcre2 pcre16
 media-libs/freetype png
@@ -215,3 +215,5 @@ media-libs/harfbuzz icu
 x11-libs/cairo X
 media-libs/libglvnd X
 
+# Arduino
+dev-util/astyle java

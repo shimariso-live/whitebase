@@ -1,4 +1,5 @@
 dev-util/jenkins-bin
+dev-java/openjdk-bin
 mail-mta/postfix
 dev-vcs/git-lfs
 net-misc/s3cmd

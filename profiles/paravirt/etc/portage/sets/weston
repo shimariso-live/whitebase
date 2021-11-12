@@ -1,3 +1,4 @@
+dev-util/wayland-scanner
 dev-libs/weston
 media-fonts/vlgothic
 app-admin/sudo

@@ -122,3 +122,6 @@ net-misc/eventd
 
 #jenkins
 dev-util/jenkins-bin
+
+#arduino
+dev-embedded/arduino

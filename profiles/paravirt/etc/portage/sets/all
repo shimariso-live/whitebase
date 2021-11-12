@@ -6,6 +6,7 @@
 @tt-rss
 @weston
 @chrome
+@arduino
 app-editors/vim
 app-editors/nano
 www-servers/nginx

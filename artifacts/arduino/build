@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+
+mkdir /usr/share/arduino/tools-builder
+sed -i 's/^gjl_pwd=.*/#\0/' /usr/bin/arduino
