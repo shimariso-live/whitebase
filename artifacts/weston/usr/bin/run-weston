@@ -1,7 +1,15 @@
 #!/bin/sh
 
+if [ -f /etc/conf.d/weston ]; then
+  . /etc/conf.d/weston
+fi
+
+ADDRESS=${ADDRESS:-"::1"}
+WIDTH=${WIDTH:-"1920"}
+HEIGHT=${HEIGHT:-"1080"}
+
 if [ ! -f "$HOME/.rdp/weston.key" ]; then
   mkdir -p $HOME/.rdp
   winpr-makecert -rdp -n weston -path $HOME/.rdp > /dev/null
 fi
-exec weston --rdp-tls-cert=$HOME/.rdp/weston.crt --rdp-tls-key=$HOME/.rdp/weston.key
+exec weston --rdp-tls-cert=$HOME/.rdp/weston.crt --rdp-tls-key=$HOME/.rdp/weston.key --address=$ADDRESS --width=$WIDTH --height=$HEIGHT --no-clients-resize $WESTON_OPTS
