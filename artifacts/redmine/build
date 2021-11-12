@@ -4,7 +4,7 @@ set -e
 mkdir -p /boot/grub
 echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
 
-download https://www.redmine.org/releases/redmine-4.2.2.tar.gz | tar zxf - --strip-components=1 -C /var/www/localhost/htdocs
+download https://www.redmine.org/releases/redmine-4.2.3.tar.gz | tar zxf - --strip-components=1 -C /var/www/localhost/htdocs
 
 chown -R apache.apache /var/www/localhost
 rm -rf /usr/local/lib64/ruby/gems/*/cache
