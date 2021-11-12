@@ -1,10 +1,8 @@
 #!/bin/sh
 set -e
 
-mkdir -p /boot/grub
-echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
-
 download http://mirrors.jenkins.io/war/latest/jenkins.war > /opt/jenkins/jenkins.war
+sed -i 's/^Type=forking$/Type=simple/' /lib/systemd/system/jenkins.service #https://github.com/jenkinsci/jenkins/pull/5561
 
 sed -i 's/^JENKINS_ENABLE_ACCESS_LOG=.*$/JENKINS_ENABLE_ACCESS_LOG="yes"/' /etc/conf.d/jenkins
 sed -i 's/^\(jenkins:.\+:\)\/sbin\/nologin$/\1\/bin\/bash/' /etc/passwd
