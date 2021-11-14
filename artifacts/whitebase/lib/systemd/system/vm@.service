@@ -2,10 +2,10 @@
 Description=Virtual Machine for %I
 Requires=scan-volumes.service
 After=scan-volumes.service network-online.target
+ConditionDirectoryNotEmpty=/var/vm/%I
 
 [Service]
 Type=notify
-ConditionDirectoryNotEmpty=/var/vm/%I
 ExecStart=/usr/sbin/vm %i
 KillMode=mixed
 TimeoutStopSec=180
