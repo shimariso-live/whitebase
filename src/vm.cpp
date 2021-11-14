@@ -627,15 +627,14 @@ int vm(const std::string& name)
     }
 
     auto system_image = vm_dir / "system", data_image = vm_dir / "data", swapfile = vm_dir / "swapfile", bootcd = vm_dir / "bootcd.iso";
+    auto grub_cfg_under_fs = fs_dir / "boot" / "grub" / "grub.cfg";
     bool has_system_image = std::filesystem::exists(system_image);
     bool has_data_image = std::filesystem::exists(data_image);
 
     auto boot_from_cdrom = std::filesystem::exists(bootcd); // TODO: check if media is loaded for real drive
 
-    auto grub_cfg_under_fs = fs_dir / "boot" / "grub" / "grub.cfg";
-    auto boot_from_fs = !boot_from_cdrom && !has_system_image && std::filesystem::exists(grub_cfg_under_fs);
     qemu_cmdline.push_back("-device");
-    qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=") + (boot_from_fs? "/dev/root" : "fs")); //,cache-size=") + std::to_string(memory) + "M");
+    qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs")); //,cache-size=") + std::to_string(memory) + "M");
 
     std::optional<std::filesystem::path> boot_image = std::nullopt;
 
@@ -646,25 +645,25 @@ int vm(const std::string& name)
         qemu_cmdline.push_back(bootcd.string());
         qemu_cmdline.push_back("-boot");
         qemu_cmdline.push_back("once=d");
-    } else if (has_system_image || has_data_image || boot_from_fs) {
+    } else if (has_system_image || has_data_image || std::filesystem::exists(grub_cfg_under_fs)) {
         boot_image = run_dir / "boot.img";
         qemu_cmdline.push_back("-kernel");
         qemu_cmdline.push_back(boot_image.value());
         qemu_cmdline.push_back("-drive");
         qemu_cmdline.push_back( std::string("file=fat:rw:") + fs_dir.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk");
-    }
 
-    if (has_system_image) {
-        qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back(std::string("file=") + system_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",readonly=on,media=disk,if=virtio,aio=native,cache.direct=on,readonly=on");
-    }
-    if (has_data_image) {
-        qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back(std::string("file=") + data_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
-    }
-    if (std::filesystem::exists(swapfile)) {
-        qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
+        if (has_system_image) {
+            qemu_cmdline.push_back("-drive");
+            qemu_cmdline.push_back(std::string("file=") + system_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",readonly=on,media=disk,if=virtio,aio=native,cache.direct=on,readonly=on");
+        }
+        if (has_data_image) {
+            qemu_cmdline.push_back("-drive");
+            qemu_cmdline.push_back(std::string("file=") + data_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
+        }
+        if (std::filesystem::exists(swapfile)) {
+            qemu_cmdline.push_back("-drive");
+            qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
+        }
     }
 
     for (const auto& i:disks) {
