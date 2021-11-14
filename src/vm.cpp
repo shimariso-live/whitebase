@@ -169,44 +169,111 @@ void create_bootimage(const std::filesystem::path& bootimage_path, const std::st
     auto bootimage_dir = bootimage_path.parent_path();
     std::filesystem::create_directories(bootimage_dir);
 
-    auto bootimage_tmp_path = bootimage_path.parent_path() / (bootimage_path.filename().string() + ".tmp." + std::to_string(getpid()));
-    auto fd = creat(bootimage_tmp_path.c_str(), S_IRUSR|S_IWUSR);
-    if (fd < 0) throw std::runtime_error(std::string("creat(") + bootimage_tmp_path.string() + ") failed: " + strerror(errno));
-    close(fd);
-    try {
-        std::filesystem::resize_file(bootimage_tmp_path, 16 * 1024 * 1024);
-        check_call({"parted","--script",bootimage_tmp_path.string(),"mklabel msdos", "mkpart primary 2048s -1", "set 1 boot on"});
-        check_call({"mkfs.vfat","--offset=2048",bootimage_tmp_path.string()});
-        with_tempmount(bootimage_tmp_path, "vfat", MS_RELATIME, "loop,offset=1048576", [&bootimage_tmp_path,&hostname](const auto& path) {
-            check_call({"grub-install", "--target=i386-pc", "--skip-fs-probe", std::string("--boot-directory=") + (path / "boot").string(), 
-                bootimage_tmp_path, "--modules=part_msdos fat squash4 xfs btrfs serial terminal"});
-            std::ofstream grub_cfg(path / "boot" / "grub" / "grub.cfg");
-            // hd0 = boot disk
-            // hd1 = virtual FAT backed by /run/vm/VMNAME
-            grub_cfg << "serial --speed=115200" << std::endl;
-            grub_cfg << "terminal_input serial console" << std::endl;
-            grub_cfg << "terminal_output serial console" << std::endl;
-            grub_cfg << "set hostname=\"" << hostname << '"' << std::endl;
-            //grub_cfg << "source (hd1,msdos1)/grub-env.cfg" << std::endl;
-            // hd2 = primary disk(typically squashfs)
-            grub_cfg << "if [ -f (hd2)/boot/grub/grub.cfg ]; then" << std::endl;
-            grub_cfg << "  set root=(hd2)" << std::endl;
-            grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
-            grub_cfg << "elif [ -f (hd2)/system ]; then" << std::endl;
-            grub_cfg << "  loopback loop (hd2)/system" << std::endl;
-            grub_cfg << "  set root=loop" << std::endl;
-            grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
-            grub_cfg << "elif [ -f (hd2)/boot/kernel ]; then" << std::endl;
-            grub_cfg << "  linux (hd2)/boot/kernel net.ifnames=0 console=tty0 console=ttyS0,115200n8r systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
-            grub_cfg << "  initrd (hd2)/boot/initramfs" << std::endl;
-            grub_cfg << "  boot" << std::endl;
-            grub_cfg << "fi" << std::endl;
-        });
-        std::filesystem::rename(bootimage_tmp_path, bootimage_path);
+    /*
+    std::filesystem::copy("/usr/lib/grub/i386-pc/boot.img", bootimage_path, std::filesystem::copy_options::overwrite_existing);
+    */
+
+    class TmpFile : public std::filesystem::path {
+    public:
+        ~TmpFile() {if (std::filesystem::exists(*this)) std::filesystem::remove(*this);}
+    };
+
+    TmpFile memdisk_tar(bootimage_dir / "memdisk.tar");
+
+    {
+        std::ofstream f(memdisk_tar, std::ios::binary|std::ios::trunc);
+        if (!f) throw std::runtime_error("memdisk.tar cannot be created");
+
+        std::ostringstream grub_cfg;
+        // hd0 = virtual FAT backed by /var/vm/VMNAME/fs
+        grub_cfg << "serial --speed=115200" << std::endl;
+        grub_cfg << "terminal_input serial console" << std::endl;
+        grub_cfg << "terminal_output serial console" << std::endl;
+        grub_cfg << "set hostname=\"" << hostname << '"' << std::endl;
+        // hd1 = primary disk(typically squashfs)
+        grub_cfg << "if [ -f (hd1)/boot/grub/grub.cfg ]; then" << std::endl;
+        grub_cfg << "  set root=(hd1)" << std::endl;
+        grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
+        grub_cfg << "elif [ -f (hd1)/system ]; then" << std::endl;
+        grub_cfg << "  loopback loop (hd1)/system" << std::endl;
+        grub_cfg << "  set root=loop" << std::endl;
+        grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
+        grub_cfg << "elif [ -f (hd1)/boot/kernel ]; then" << std::endl;
+        grub_cfg << "  linux (hd1)/boot/kernel net.ifnames=0 console=tty0 console=ttyS0,115200n8r systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
+        grub_cfg << "  initrd (hd1)/boot/initramfs" << std::endl;
+        grub_cfg << "  boot" << std::endl;
+        grub_cfg << "elif [ -f (hd0,msdos1)/boot/grub/grub.cfg ]; then" << std::endl;
+        grub_cfg << "  set root=(hd0,msdos1)" << std::endl;
+        grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
+        grub_cfg << "fi" << std::endl;
+
+        const auto& content_str = grub_cfg.str();
+
+        struct {
+            char name[100];
+            char mode[8];
+            char uid[8];
+            char gid[8];
+            char size[12];
+            char mtime[12];
+            char chksum[8];
+            char typeflag;
+            char linkname[100];
+            char magic[6];
+            char version[2];
+            char uname[32];
+            char gname[32];
+            char devmajor[8];
+            char devminor[8];
+            char prefix[155];
+            char padding[12];
+        } tar_header;
+        memset(&tar_header, 0, sizeof(tar_header));
+        strcpy(tar_header.name, "boot/grub/grub.cfg");
+        strcpy(tar_header.mode, "0000644");
+        strcpy(tar_header.uid, "0000000");
+        strcpy(tar_header.gid, "0000000");
+        sprintf(tar_header.size, "%07lo", content_str.length());
+        sprintf(tar_header.mtime, "%011lo", time(NULL));
+        tar_header.typeflag = '\0'; // regular file
+        strcpy(tar_header.magic, "ustar");
+
+        int sum = 0;
+        for (int i = 0; i < sizeof(tar_header); i++) {
+            sum += ((const uint8_t*)&tar_header)[i];
+        }
+        sprintf(tar_header.chksum, "%07o", sum);
+
+        f.write((const char*)&tar_header, sizeof(tar_header));
+        f << content_str;
+        const size_t block_size = 512;
+        char pad[block_size];
+        memset(pad, 0, sizeof(pad));
+        auto mod = content_str.length() % block_size;
+        if (mod > 0) f.write(pad, block_size - mod);
+        f.write(pad, block_size);
+        f.write(pad, block_size);
     }
-    catch (...) {
-        std::filesystem::remove(bootimage_tmp_path);
-        throw;
+
+    auto pid = fork();
+    if (pid < 0) {
+        //close(fd);
+        throw std::runtime_error("fork() failed");
+    }
+    if (pid == 0) {
+        // subprocess
+        _exit(execlp("grub-mkimage", "grub-mkimage", "-O", "i386-pc", "-p", "/boot/grub", 
+            "-m", memdisk_tar.c_str(),
+            "memdisk", "biosdisk", "part_msdos", "normal", "linux", "echo", "squash4", "serial", "terminal", 
+            "configfile", "loopback", "test", "tar", "fat", "ext2", "xfs", "btrfs", "minicmd", "probe", "regexp", "xzio",
+            "-o", bootimage_path.c_str(),
+            NULL));
+    }
+    // else(main process)
+    int wstatus;
+    waitpid(pid, &wstatus, 0);
+    if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) {
+        throw std::runtime_error("grub-mkimage failed");
     }
 }
 
@@ -407,7 +474,7 @@ int vm(const std::string& name)
     if (cpus < 1) throw std::runtime_error("Invalid cpu number");
 
     // load DISK config
-    std::vector<std::tuple<std::filesystem::path,std::string/*format*/,bool/*readonly*/>> disks;
+    std::vector<std::tuple<std::filesystem::path,std::string/*format*/,std::string/*media*/,bool/*readonly*/,bool/*virtio*/>> disks;
     for (int i = 0; i < 10; i++) {
         char buf[16];
         sprintf(buf, "disk%d", i);
@@ -425,9 +492,16 @@ int vm(const std::string& name)
         sprintf(buf, "disk%d:format", i);
         auto format = iniparser_getstring(ini.get(), buf, "raw");
 
+        sprintf(buf, "disk%d:media", i);
+        std::string media = iniparser_getstring(ini.get(), buf, "disk");
+
         sprintf(buf, "disk%d:readonly", i);
-        bool readonly = (bool)iniparser_getboolean(ini.get(), buf, 0);
-        disks.push_back({path, format, readonly});
+        bool readonly = (bool)iniparser_getboolean(ini.get(), buf, media == "cdrom"? 1 : 0);
+
+        sprintf(buf, "disk%d:virtio", i);
+        bool virtio = (bool)iniparser_getboolean(ini.get(), buf, 0);
+    
+        disks.push_back({path, format, media, readonly, virtio});
     }
 
     // load NIC config
@@ -552,63 +626,56 @@ int vm(const std::string& name)
         qemu_cmdline.push_back("virtio-rng-pci");
     }
 
-    auto system_image = vm_dir / "system", data_image = vm_dir / "data", swapfile = vm_dir / "swapfile", cdrom = vm_dir / "cdrom";
+    auto system_image = vm_dir / "system", data_image = vm_dir / "data", swapfile = vm_dir / "swapfile", bootcd = vm_dir / "bootcd.iso";
     bool has_system_image = std::filesystem::exists(system_image);
     bool has_data_image = std::filesystem::exists(data_image);
 
-    std::vector<std::filesystem::path> kernel_candidates = {fs_dir / "boot" / "kernel", fs_dir / "boot" / "vmlinuz", fs_dir / "vmlinuz"};
-    auto kernel = std::find_if(kernel_candidates.begin(), kernel_candidates.end(), [](const auto& path) {return std::filesystem::exists(path);});
+    auto boot_from_cdrom = std::filesystem::exists(bootcd); // TODO: check if media is loaded for real drive
 
-    auto boot_from_cdrom = std::filesystem::exists(cdrom); // TODO: check if media is loaded for real drive
-
-    auto boot_from_fs = !boot_from_cdrom && !has_system_image && kernel != kernel_candidates.end();
+    auto grub_cfg_under_fs = fs_dir / "boot" / "grub" / "grub.cfg";
+    auto boot_from_fs = !boot_from_cdrom && !has_system_image && std::filesystem::exists(grub_cfg_under_fs);
     qemu_cmdline.push_back("-device");
     qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=") + (boot_from_fs? "/dev/root" : "fs")); //,cache-size=") + std::to_string(memory) + "M");
 
     std::optional<std::filesystem::path> boot_image = std::nullopt;
 
-    if (boot_from_fs) {
-        qemu_cmdline.push_back("-kernel");
-        qemu_cmdline.push_back(*kernel);
-        qemu_cmdline.push_back("-append");
-        qemu_cmdline.push_back("root=/dev/root rootfstype=virtiofs _rootflags=dax rw net.ifnames=0 console=ttyS0,115200n8r console=tty0 systemd.hostname=" + name);
-    } else if (boot_from_cdrom) {
+    int disk_idx = 0;
+
+    if (boot_from_cdrom) {
         qemu_cmdline.push_back("-cdrom");
-        qemu_cmdline.push_back(cdrom.string());
+        qemu_cmdline.push_back(bootcd.string());
         qemu_cmdline.push_back("-boot");
         qemu_cmdline.push_back("once=d");
-    } else if (has_system_image || has_data_image) {
+    } else if (has_system_image || has_data_image || boot_from_fs) {
         boot_image = run_dir / "boot.img";
+        qemu_cmdline.push_back("-kernel");
+        qemu_cmdline.push_back(boot_image.value());
         qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back(std::string("file=") + boot_image.value().string() + ",format=raw,index=0,media=disk");
-        qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back( std::string("file=fat:rw:") + run_dir.string() + ",format=raw,index=1,media=disk");
+        qemu_cmdline.push_back( std::string("file=fat:rw:") + fs_dir.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk");
     }
 
-    int disk_idx = 0;
-    if (!boot_from_cdrom) {
-        if (has_system_image) {
-            qemu_cmdline.push_back("-drive");
-            qemu_cmdline.push_back(std::string("file=") + system_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",readonly=on,media=disk,if=virtio,aio=native,cache.direct=on,readonly=on");
-        }
-        if (has_data_image) {
-            qemu_cmdline.push_back("-drive");
-            qemu_cmdline.push_back(std::string("file=") + data_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
-        }
-        if (std::filesystem::exists(swapfile)) {
-            qemu_cmdline.push_back("-drive");
-            qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
-        }
+    if (has_system_image) {
+        qemu_cmdline.push_back("-drive");
+        qemu_cmdline.push_back(std::string("file=") + system_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",readonly=on,media=disk,if=virtio,aio=native,cache.direct=on,readonly=on");
+    }
+    if (has_data_image) {
+        qemu_cmdline.push_back("-drive");
+        qemu_cmdline.push_back(std::string("file=") + data_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
+    }
+    if (std::filesystem::exists(swapfile)) {
+        qemu_cmdline.push_back("-drive");
+        qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
     }
 
     for (const auto& i:disks) {
         qemu_cmdline.push_back("-drive");
         qemu_cmdline.push_back(std::string("file=") + std::get<0>(i).string() + ",format=" + std::get<1>(i) + ",index=" + std::to_string(disk_idx++) 
-            + ",readonly=" + (std::get<2>(i)? "on" : "off")
-            + ",media=disk,if=virtio,aio=native,cache.direct=on");
+            + ",media=" + std::get<2>(i)
+            + ",readonly=" + (std::get<3>(i)? "on" : "off")
+            + ",if=" + (std::get<4>(i)? "virtio" : "ide") + ",aio=native,cache.direct=on");
     }
 
-    if (!boot_from_fs && disk_idx == 0) throw std::runtime_error("No bootable disk for " + name + ".");
+    if (disk_idx == 0) throw std::runtime_error("No bootable disk for " + name + ".");
 
     int nic_idx = 0;
     for (const auto& nic:nics) {
@@ -656,10 +723,7 @@ int vm(const std::string& name)
     */
 
     return with_vm_lock<int>(name, [&]() -> int {
-        if (boot_image.has_value() && !std::filesystem::exists(boot_image.value())) {
-            std::cout << "Boot image file does not exist.  Creating..." << std::endl;
-            create_bootimage(boot_image.value(), name);
-        }
+        if (boot_image) create_bootimage(boot_image.value(), name);
 
         std::cout << "Starting " << name << std::endl;
 

@@ -38,7 +38,7 @@ mkdir -p $STUBVM/etc
 gcc -static -o $STUBVM/etc/init /usr/src/stubinit.c
 
 # kernel
-mkdir -p $STUBVM/boot
+mkdir -p $STUBVM/boot/grub
 cp /boot/kernel $STUBVM/boot/kernel
 
 # llmnrd
