@@ -457,12 +457,30 @@ static std::optional<std::pair<std::optional<std::string>/*uuid*/,std::optional<
     return rst;
 }
 
+bool is_aarch64_kernel(const std::filesystem::path& kernel)
+{
+    int fd = open(kernel.c_str(), O_RDONLY);
+    if (fd < 0) throw std::runtime_error("open(kernel) failed");
+    uint8_t buf[0x3c];
+    bool is_aarch64 = false;
+    if (read(fd, buf, sizeof(buf)) == sizeof(buf)) {
+        if (buf[0x38] == 0x41 && buf[0x39] == 0x52 && buf[0x3a] == 0x4d && buf[0x3b] == 0x64) is_aarch64 = true;
+    }
+    close(fd);
+    return is_aarch64;
+}
+
 int vm(const std::string& name)
 {
     auto vm_dir = vm_root / name, run_dir = run_root / name;
     auto fs_dir = vm_dir / "fs";
 
     if (!std::filesystem::is_directory(vm_dir)) throw std::runtime_error("No VM found");
+
+    struct utsname u_name;
+    if (uname(&u_name) < 0) throw std::runtime_error("uname() failed");
+    std::string arch = u_name.machine; // e.g. x86_64
+    std::string target_arch = arch;
 
     // parse ini
     auto ini_path = vm_dir / "vm.ini";
@@ -581,6 +599,12 @@ int vm(const std::string& name)
     auto qga_bridge_sock = run_dir / ".qga.sock";
     auto qga_sock = run_dir / "qga.sock";
 
+    // detect kernel
+    auto kernel = std::filesystem::exists(vm_dir / "kernel")? std::optional(vm_dir / "kernel") : std::nullopt;
+    auto initramfs = kernel && std::filesystem::exists(vm_dir / "initramfs")? std::optional(vm_dir / "initramfs") : std::nullopt;
+
+    if (kernel && is_aarch64_kernel(kernel.value())) target_arch = "aarch64";
+
     std::vector<std::string> virtiofsd_cmdline = {
         "/usr/libexec/virtiofsd","-f","-o","cache=" + std::string(virtiofsd_cache) + ",log_level=" + std::string(debug? "debug" : "warn") 
 //            + ",posix_acl,xattrmap=:ok:all:::"
@@ -591,7 +615,7 @@ int vm(const std::string& name)
     };
 
     std::vector<std::string> qemu_cmdline = {
-        "qemu-system-x86_64","-M","q35",//"-rtc","base=utc,clock=rt",
+        "qemu-system-" + target_arch,
         "-m", std::to_string(memory),
         "-smp", "cpus=" + std::to_string(cpus), 
         "-uuid", get_or_generate_uuid(name), 
@@ -603,12 +627,6 @@ int vm(const std::string& name)
         "-chardev", "socket,path=" + qga_bridge_sock.string() + ",server=on,wait=off,id=qga0", 
         "-device", "virtio-serial", "-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
     };
-
-    if (kvm) {
-        qemu_cmdline.push_back("-enable-kvm");
-        qemu_cmdline.push_back("-cpu");
-        qemu_cmdline.push_back("host");
-    }
 
     if (rtc) {
         qemu_cmdline.push_back("-rtc");
@@ -636,7 +654,25 @@ int vm(const std::string& name)
     qemu_cmdline.push_back("-device");
     qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs")); //,cache-size=") + std::to_string(memory) + "M");
 
-    std::optional<std::filesystem::path> boot_image = std::nullopt;
+    std::optional<std::string> cpu_model;
+    if (kvm && target_arch == arch) {
+        qemu_cmdline.push_back("-enable-kvm");
+        cpu_model = "host";
+    }
+
+    if (target_arch == "x86_64") {
+        qemu_cmdline.push_back("-M");
+        qemu_cmdline.push_back("q35");
+    } else if (target_arch == "aarch64") {
+        qemu_cmdline.push_back("-M");
+        qemu_cmdline.push_back("virt");
+        if (!cpu_model) cpu_model = "cortex-a57";
+    }
+
+    if (cpu_model) {
+        qemu_cmdline.push_back("-cpu");
+        qemu_cmdline.push_back(cpu_model.value());
+    }
 
     int disk_idx = 0;
 
@@ -646,11 +682,20 @@ int vm(const std::string& name)
         qemu_cmdline.push_back("-boot");
         qemu_cmdline.push_back("once=d");
     } else if (has_system_image || has_data_image || std::filesystem::exists(grub_cfg_under_fs)) {
-        boot_image = run_dir / "boot.img";
+        if (kernel) {
+            if (initramfs) {
+                qemu_cmdline.push_back("-initrd");
+                qemu_cmdline.push_back(initramfs.value());
+            }
+            qemu_cmdline.push_back("-append");
+            qemu_cmdline.push_back("root=/dev/vda rw net.ifnames=0 systemd.firstboot=0 systemd.hostname=" + name);
+        } else {
+            kernel = run_dir / "boot.img";
+            qemu_cmdline.push_back("-drive");
+            qemu_cmdline.push_back( std::string("file=fat:rw:") + fs_dir.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=ide");
+        }
         qemu_cmdline.push_back("-kernel");
-        qemu_cmdline.push_back(boot_image.value());
-        qemu_cmdline.push_back("-drive");
-        qemu_cmdline.push_back( std::string("file=fat:rw:") + fs_dir.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk");
+        qemu_cmdline.push_back(kernel.value());
 
         if (has_system_image) {
             qemu_cmdline.push_back("-drive");
@@ -722,7 +767,7 @@ int vm(const std::string& name)
     */
 
     return with_vm_lock<int>(name, [&]() -> int {
-        if (boot_image) create_bootimage(boot_image.value(), name);
+        if (kernel && !std::filesystem::exists(kernel.value())) create_bootimage(kernel.value(), name);
 
         std::cout << "Starting " << name << std::endl;
 
