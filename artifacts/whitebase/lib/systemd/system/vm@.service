@@ -1,8 +1,8 @@
 [Unit]
-Description=Virtual Machine for %I
+Description=Virtual Machine for %i
 Requires=scan-volumes.service
 After=scan-volumes.service network-online.target
-ConditionDirectoryNotEmpty=/var/vm/%I
+ConditionDirectoryNotEmpty=/var/vm/%i
 
 [Service]
 Type=notify
