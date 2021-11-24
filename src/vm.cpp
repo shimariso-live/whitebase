@@ -666,7 +666,7 @@ int vm(const std::string& name)
     } else if (target_arch == "aarch64") {
         qemu_cmdline.push_back("-M");
         qemu_cmdline.push_back("virt");
-        if (!cpu_model) cpu_model = "cortex-a57";
+        if (!cpu_model) cpu_model = "cortex-a72";
     }
 
     if (cpu_model) {
