@@ -79,7 +79,7 @@ x11-base/xorg-server wayland
 media-fonts/noto cjk
 net-misc/freerdp jpeg server -ffmpeg openh264
 net-misc/tigervnc server
-dev-libs/libpcre2 pcre16
+dev-libs/libpcre2 pcre16 pcre32
 media-libs/freetype png
 app-editors/gedit -python
 
@@ -217,3 +217,4 @@ media-libs/libglvnd X
 
 # Arduino
 dev-util/astyle java
+
