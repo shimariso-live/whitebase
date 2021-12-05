@@ -94,6 +94,7 @@ net-wireless/bluez
 sys-firmware/bluez-firmware
 
 net-fs/samba
+net-fs/ksmbd-tools
 net-analyzer/zabbix
 
 dev-libs/libvterm

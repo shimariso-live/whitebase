@@ -27,5 +27,8 @@ acpid
 mkdir -p /etc/dropbear
 dropbear -R
 qemu-ga -p /dev/vport0p1 -d
+modprobe ksmbd
+mkdir -p /var/share
+/usr/sbin/ksmbd.mountd -s
 
 exec init

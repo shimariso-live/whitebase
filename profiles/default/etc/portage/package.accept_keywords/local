@@ -24,3 +24,6 @@ dev-cpp/picojson
 app-crypt/gcr
 media-libs/libglvnd
 net-misc/eventd
+
+# misc
+net-fs/ksmbd-tools **

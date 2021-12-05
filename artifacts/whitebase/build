@@ -55,8 +55,9 @@ if [ ! -d /lib64 ]; then
 fi
 
 # setup stubroot
-lddtree -l /bin/busybox /bin/bash /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/sbin/avahi-daemon /usr/bin/wg /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap /usr/bin/iperf3 $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
+lddtree -l /bin/busybox /bin/bash /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/sbin/avahi-daemon /usr/bin/wg /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap /usr/bin/iperf3 /usr/sbin/ksmbd.* $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
 echo -e '/sbin/ldconfig\n/usr/share/udhcpc/default.script\n/usr/bin/wg-quick' >> /tmp/stubroot-files
+modprobe -S `ls /lib/modules` --show-depends ksmbd | sed 's/\(^insmod \|\s\+$\)//g' >> /tmp/stubroot-files
 rsync -L --files-from=/tmp/stubroot-files / $STUBROOT
 
 # debootstrap, rpm
