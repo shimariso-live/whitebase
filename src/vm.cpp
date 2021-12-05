@@ -169,10 +169,6 @@ void create_bootimage(const std::filesystem::path& bootimage_path, const std::st
     auto bootimage_dir = bootimage_path.parent_path();
     std::filesystem::create_directories(bootimage_dir);
 
-    /*
-    std::filesystem::copy("/usr/lib/grub/i386-pc/boot.img", bootimage_path, std::filesystem::copy_options::overwrite_existing);
-    */
-
     class TmpFile : public std::filesystem::path {
     public:
         ~TmpFile() {if (std::filesystem::exists(*this)) std::filesystem::remove(*this);}
@@ -185,26 +181,22 @@ void create_bootimage(const std::filesystem::path& bootimage_path, const std::st
         if (!f) throw std::runtime_error("memdisk.tar cannot be created");
 
         std::ostringstream grub_cfg;
-        // hd0 = virtual FAT backed by /var/vm/VMNAME/fs
         grub_cfg << "serial --speed=115200" << std::endl;
         grub_cfg << "terminal_input serial console" << std::endl;
         grub_cfg << "terminal_output serial console" << std::endl;
         grub_cfg << "set hostname=\"" << hostname << '"' << std::endl;
-        // hd1 = primary disk(typically squashfs)
-        grub_cfg << "if [ -f (hd1)/boot/grub/grub.cfg ]; then" << std::endl;
-        grub_cfg << "  set root=(hd1)" << std::endl;
+        // hd0 = primary disk(typically squashfs)
+        grub_cfg << "if [ -f (hd0)/boot/grub/grub.cfg ]; then" << std::endl;
+        grub_cfg << "  set root=(hd0)" << std::endl;
         grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
-        grub_cfg << "elif [ -f (hd1)/system ]; then" << std::endl;
-        grub_cfg << "  loopback loop (hd1)/system" << std::endl;
+        grub_cfg << "elif [ -f (hd0)/system ]; then" << std::endl;
+        grub_cfg << "  loopback loop (hd0)/system" << std::endl;
         grub_cfg << "  set root=loop" << std::endl;
         grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
-        grub_cfg << "elif [ -f (hd1)/boot/kernel ]; then" << std::endl;
-        grub_cfg << "  linux (hd1)/boot/kernel net.ifnames=0 console=tty0 console=ttyS0,115200n8r systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
-        grub_cfg << "  initrd (hd1)/boot/initramfs" << std::endl;
+        grub_cfg << "elif [ -f (hd0)/boot/kernel ]; then" << std::endl;
+        grub_cfg << "  linux (hd0)/boot/kernel net.ifnames=0 console=tty0 console=ttyS0,115200n8r systemd.hostname=$hostname systemd.firstboot=0" << std::endl;
+        grub_cfg << "  initrd (hd0)/boot/initramfs" << std::endl;
         grub_cfg << "  boot" << std::endl;
-        grub_cfg << "elif [ -f (hd0,msdos1)/boot/grub/grub.cfg ]; then" << std::endl;
-        grub_cfg << "  set root=(hd0,msdos1)" << std::endl;
-        grub_cfg << "  source /boot/grub/grub.cfg" << std::endl;
         grub_cfg << "fi" << std::endl;
 
         const auto& content_str = grub_cfg.str();
@@ -599,12 +591,6 @@ int vm(const std::string& name)
     auto qga_bridge_sock = run_dir / ".qga.sock";
     auto qga_sock = run_dir / "qga.sock";
 
-    // detect kernel
-    auto kernel = std::filesystem::exists(vm_dir / "kernel")? std::optional(vm_dir / "kernel") : std::nullopt;
-    auto initramfs = kernel && std::filesystem::exists(vm_dir / "initramfs")? std::optional(vm_dir / "initramfs") : std::nullopt;
-
-    if (kernel && is_aarch64_kernel(kernel.value())) target_arch = "aarch64";
-
     std::vector<std::string> virtiofsd_cmdline = {
         "/usr/libexec/virtiofsd","-f","-o","cache=" + std::string(virtiofsd_cache) + ",log_level=" + std::string(debug? "debug" : "warn") 
 //            + ",posix_acl,xattrmap=:ok:all:::"
@@ -645,7 +631,6 @@ int vm(const std::string& name)
     }
 
     auto system_image = vm_dir / "system", data_image = vm_dir / "data", swapfile = vm_dir / "swapfile", bootcd = vm_dir / "bootcd.iso";
-    auto grub_cfg_under_fs = fs_dir / "boot" / "grub" / "grub.cfg";
     bool has_system_image = std::filesystem::exists(system_image);
     bool has_data_image = std::filesystem::exists(data_image);
 
@@ -653,6 +638,12 @@ int vm(const std::string& name)
 
     qemu_cmdline.push_back("-device");
     qemu_cmdline.push_back(std::string("vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=fs")); //,cache-size=") + std::to_string(memory) + "M");
+
+    // detect kernel
+    auto kernel = (!has_system_image && std::filesystem::exists(fs_dir / "boot/kernel"))? std::optional(fs_dir / "boot/kernel") : std::nullopt;
+    auto initramfs = kernel && std::filesystem::exists(fs_dir / "boot/initramfs")? std::optional(fs_dir / "boot/initramfs") : std::nullopt;
+
+    if (kernel && is_aarch64_kernel(kernel.value())) target_arch = "aarch64";
 
     std::optional<std::string> cpu_model;
     if (kvm && target_arch == arch) {
@@ -676,27 +667,9 @@ int vm(const std::string& name)
 
     int disk_idx = 0;
 
-    if (boot_from_cdrom) {
-        qemu_cmdline.push_back("-cdrom");
-        qemu_cmdline.push_back(bootcd.string());
-        qemu_cmdline.push_back("-boot");
-        qemu_cmdline.push_back("once=d");
-    } else if (has_system_image || has_data_image || std::filesystem::exists(grub_cfg_under_fs)) {
-        if (kernel) {
-            if (initramfs) {
-                qemu_cmdline.push_back("-initrd");
-                qemu_cmdline.push_back(initramfs.value());
-            }
-            qemu_cmdline.push_back("-append");
-            qemu_cmdline.push_back("root=/dev/vda rw net.ifnames=0 systemd.firstboot=0 systemd.hostname=" + name);
-        } else {
-            kernel = run_dir / "boot.img";
-            qemu_cmdline.push_back("-drive");
-            qemu_cmdline.push_back( std::string("file=fat:rw:") + fs_dir.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=ide");
-        }
-        qemu_cmdline.push_back("-kernel");
-        qemu_cmdline.push_back(kernel.value());
+    bool fullvirtual = boot_from_cdrom || (!has_system_image && !has_data_image && !kernel);
 
+    if (!fullvirtual) {
         if (has_system_image) {
             qemu_cmdline.push_back("-drive");
             qemu_cmdline.push_back(std::string("file=") + system_image.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",readonly=on,media=disk,if=virtio,aio=native,cache.direct=on,readonly=on");
@@ -709,8 +682,33 @@ int vm(const std::string& name)
             qemu_cmdline.push_back("-drive");
             qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
         }
+
+        if (has_system_image || has_data_image) {
+            kernel = run_dir / "boot.img";
+        } else if (kernel) {
+            if (initramfs) {
+                qemu_cmdline.push_back("-initrd");
+                qemu_cmdline.push_back(initramfs.value());
+            }
+            qemu_cmdline.push_back("-append");
+            std::string rootfs_args = has_data_image? "root=/dev/vda" : "root=fs rootfstype=virtiofs _rootflags=dax";
+            std::string arch_args = target_arch == "x86_64"? "console=tty0 console=ttyS0,115200n8r" : "";
+            qemu_cmdline.push_back(rootfs_args + " rw net.ifnames=0 " + arch_args + " systemd.hostname=" + name + " systemd.firstboot=0");
+        }
+
+        if (kernel) {
+            qemu_cmdline.push_back("-kernel");
+            qemu_cmdline.push_back(kernel.value());
+        }
     }
 
+    if (boot_from_cdrom) {
+        qemu_cmdline.push_back("-cdrom");
+        qemu_cmdline.push_back(bootcd.string());
+        qemu_cmdline.push_back("-boot");
+        qemu_cmdline.push_back("once=d");
+    }
+    
     for (const auto& i:disks) {
         qemu_cmdline.push_back("-drive");
         qemu_cmdline.push_back(std::string("file=") + std::get<0>(i).string() + ",format=" + std::get<1>(i) + ",index=" + std::to_string(disk_idx++) 
@@ -719,7 +717,7 @@ int vm(const std::string& name)
             + ",if=" + (std::get<4>(i)? "virtio" : "ide") + ",aio=native,cache.direct=on");
     }
 
-    if (disk_idx == 0) throw std::runtime_error("No bootable disk for " + name + ".");
+    if (!kernel && disk_idx == 0) throw std::runtime_error("No bootable disk for " + name + ".");
 
     int nic_idx = 0;
     for (const auto& nic:nics) {
