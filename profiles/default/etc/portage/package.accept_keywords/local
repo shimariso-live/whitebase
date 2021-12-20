@@ -2,6 +2,7 @@ sys-kernel/gentoo-sources
 sys-kernel/linux-firmware
 sys-apps/hwids
 net-misc/usbip
+net-misc/modemmanager
 sys-fs/bcache-tools
 net-analyzer/snort
 sys-process/cronie
