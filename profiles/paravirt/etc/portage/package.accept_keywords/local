@@ -60,10 +60,10 @@ dev-ruby/marcel
 =dev-ruby/mini_magick-4.11.0
 =dev-ruby/mocha-1.12.0
 =dev-ruby/parallel-1.20.1
-=dev-ruby/cliver-0.3.2
-=dev-ruby/rack-openid-1.4.2
-=dev-ruby/rbpdf-1.20.1-r2
-=dev-ruby/rbpdf-font-1.19.1
+dev-ruby/cliver
+dev-ruby/rack-openid
+dev-ruby/rbpdf
+dev-ruby/rbpdf-font
 =dev-ruby/redcarpet-3.5.1
 =dev-ruby/request_store-1.5.0
 =dev-ruby/roadie-4.0.0
@@ -93,7 +93,7 @@ dev-ruby/marcel
 =dev-ruby/rubyzip-2.3.0
 =dev-ruby/simplecov-0.18.5
 =dev-ruby/actionpack-xml_parser-2.0.1-r1
-=dev-ruby/css_parser-1.7.1
+dev-ruby/css_parser
 
 #php
 dev-php/composer
@@ -125,3 +125,7 @@ dev-util/jenkins-bin
 
 #arduino
 dev-embedded/arduino
+
+#xen
+app-emulation/xen
+app-emulation/xen-tools

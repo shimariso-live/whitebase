@@ -1,0 +1,4 @@
+{
+	"profile":"paravirt",
+	"packages":["@xen","@common"]
+}
