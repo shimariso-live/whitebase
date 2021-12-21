@@ -7,4 +7,5 @@
 <dev-lang/php-7.3
 >=dev-lang/lua-5.3
 >=dev-util/ragel-7
->=x11-libs/pango-1.48.7 # for pango's circular dep
+>=dev-libs/protobuf-3.19 # for mozc
+>=dev-python/protobuf-python-3.19
