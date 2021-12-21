@@ -27,4 +27,4 @@ media-libs/libglvnd
 net-misc/eventd
 
 # misc
-net-fs/ksmbd-tools **
+net-fs/ksmbd-tools
