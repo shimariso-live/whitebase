@@ -1,0 +1,38 @@
+app-admin/eclean-kernel **
+dev-python/pymountboot **
+app-emulation/qemu-guest-agent **
+app-admin/testdisk **
+app-backup/fsarchiver **
+app-backup/rdiff-backup **
+app-benchmarks/stress
+app-crypt/chntpw **
+app-editors/bvi **
+app-misc/beep **
+dev-libs/libvterm
+dev-libs/openssl-compat
+dev-util/debootstrap
+media-fonts/vlgothic
+net-analyzer/zabbix **
+net-ftp/ftp **
+net-misc/ifenslave **
+net-misc/taylor-uucp **
+net-misc/vconfig
+net-misc/wakeonlan
+sys-apps/cciss_vol_status **
+sys-apps/usb_modeswitch
+<sys-block/nbd-9999 **
+sys-cluster/drbd-utils **
+sys-firmware/bluez-firmware
+sys-fs/bcache-tools **
+sys-fs/compsize
+sys-fs/ddrescue **
+sys-fs/exfat-utils
+sys-fs/safecopy **
+app-admin/chrpath
+net-analyzer/fping
+dev-libs/libdnet
+net-libs/daq
+dev-python/pylibacl **
+net-libs/librsync **
+sys-power/iasl
+

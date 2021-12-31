@@ -24,7 +24,6 @@ sys-process/cronie
 sys-fs/squashfs-tools
 sys-apps/dmidecode
 sys-apps/lm-sensors
-sys-block/megacli
 sys-apps/usb_modeswitch
 sys-power/cpupower
 sys-apps/smartmontools
@@ -86,7 +85,8 @@ app-benchmarks/stress
 sys-apps/rng-tools
 app-arch/zip
 net-misc/dropbear
-sys-apps/memtest86+
+#sys-apps/memtest86+ # incompatible with arm
+#sys-block/megacli # incompatible with arm
 app-backup/rdiff-backup
 
 # sys-power/nut  # because of old libusb

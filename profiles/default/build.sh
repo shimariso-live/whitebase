@@ -4,7 +4,7 @@ set -e
 pushd /var/db/repos/localrepo && repoman manifest || exit 1
 popd
 
-build-kernel
+build-kernel --config /kernel-config.`uname -m`
 
 emerge -uDN -bk --binpkg-respect-use=y --exclude='sys-kernel/*' world @all
 

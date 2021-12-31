@@ -19,6 +19,7 @@ media-libs/libepoxy # for https://github.com/anholt/libepoxy/pull/238/commits/db
 =dev-cpp/pangomm-2.48.1
 =dev-libs/libsigc++-3.0.7
 =dev-libs/weston-9999 ** # for autolaunch function
+dev-libs/wayland-protocols # for weston-9999
 dev-cpp/picojson
 
 # rescue
