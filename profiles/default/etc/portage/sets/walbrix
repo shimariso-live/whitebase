@@ -88,6 +88,7 @@ net-misc/dropbear
 #sys-apps/memtest86+ # incompatible with arm
 #sys-block/megacli # incompatible with arm
 app-backup/rdiff-backup
+app-backup/btrbk
 
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
