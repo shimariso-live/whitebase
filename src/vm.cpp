@@ -683,23 +683,24 @@ int vm(const std::string& name)
             qemu_cmdline.push_back(std::string("file=") + swapfile.string() + ",format=raw,index=" + std::to_string(disk_idx++) + ",media=disk,if=virtio,aio=native,cache.direct=on");
         }
 
-        if (has_system_image || has_data_image) {
-            kernel = run_dir / "boot.img";
-        } else if (kernel) {
+        if (kernel) {
+            // kernel specified(or in fs)
             if (initramfs) {
                 qemu_cmdline.push_back("-initrd");
                 qemu_cmdline.push_back(initramfs.value());
             }
             qemu_cmdline.push_back("-append");
-            std::string rootfs_args = has_data_image? "root=/dev/vda" : "root=fs rootfstype=virtiofs _rootflags=dax";
+            std::string rootfs_args = (kernel.value() == fs_dir / "boot/kernel")? "root=fs rootfstype=virtiofs _rootflags=dax" : "root=/dev/vda";
             std::string arch_args = target_arch == "x86_64"? "console=tty0 console=ttyS0,115200n8r" : "";
             qemu_cmdline.push_back(rootfs_args + " rw net.ifnames=0 " + arch_args + " systemd.hostname=" + name + " systemd.firstboot=0");
+        } else {
+            // use grub
+            kernel = run_dir / "boot.img";
         }
 
-        if (kernel) {
-            qemu_cmdline.push_back("-kernel");
-            qemu_cmdline.push_back(kernel.value());
-        }
+        //else
+        qemu_cmdline.push_back("-kernel");
+        qemu_cmdline.push_back(kernel.value());
     }
 
     if (boot_from_cdrom) {
