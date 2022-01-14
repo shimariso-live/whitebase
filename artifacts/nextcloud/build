@@ -10,7 +10,7 @@ EOS
 with-mysql 'mysql -u root < /tmp/sql'
 
 echo "Extrtacting Nextcloud..."
-download https://download.nextcloud.com/server/releases/latest-22.tar.bz2 | tar jxf - --strip-components=1 -C /var/www/localhost/htdocs
+download https://download.nextcloud.com/server/releases/latest-23.tar.bz2 | tar jxf - --strip-components=1 -C /var/www/localhost/htdocs
 
 mkdir /var/lib/nextcloud
 chown -R apache.apache /var/www/localhost /var/lib/nextcloud
