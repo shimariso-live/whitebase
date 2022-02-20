@@ -16,6 +16,7 @@ sys-apps/lshw
 sys-apps/usbutils
 net-vpn/wireguard-tools
 app-editors/bvi
+app-editors/vim
 app-admin/sysstat
 app-crypt/chntpw
 sys-process/lsof
