@@ -10,3 +10,6 @@ g++ -std=c++2a -static-libgcc -static-libstdc++ -o /init /init.cpp -lmount -lxen
 rm -f /boot/initramfs
 /init > /boot/initramfs
 
+rm -f /sbin/init
+cp -a /linuxrc /sbin/init
+

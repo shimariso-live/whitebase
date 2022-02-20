@@ -1,0 +1,43 @@
+#!/bin/sh
+set -e
+if [ $$ -ne 1 ]; then
+	echo "PID must be 1"
+	exit 1
+fi
+
+# exec systemd if overlayfs already set up
+[ -d /run/initramfs ] && exec /lib/systemd/systemd
+
+mount -t tmpfs tmpfs /run
+mkdir /run/.rw
+if [ -b /dev/vdb ]; then
+	mount -t auto /dev/vdb /run/.rw && echo "Data partition mounted." || echo "Data partition couldn't be mounted."
+fi
+if ! mountpoint -q /run/.rw; then
+	mount -t virtiofs fs /run/.rw && echo "Host filesystem mounted." || echo "Host filesystem couldn't be mounted."
+fi
+if mountpoint -q /run/.rw; then
+	mkdir -p /run/.rw/root /run/.rw/work /run/.newroot
+	if mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay /run/.newroot; then
+		echo "Root filesystem mounted."
+	else
+		echo "Root filesystem couldn't be mounted. falling back to transient R/W layer."
+		umount /run/.rw
+	fi
+fi
+if ! mountpoint -q /run/.rw; then
+	mount -t tmpfs tmpfs /run/.rw && echo "Transient R/W layer mounted."
+	mkdir -p /run/.rw/root /run/.rw/work /run/.newroot
+	mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay /run/.newroot && echo "Root filesystem mounted."
+fi
+
+mount -t tmpfs tmpfs /run/.newroot/run
+mkdir -p /run/.newroot/run/initramfs/rw
+mount --move /run/.rw /run/.newroot/run/initramfs/rw
+mount --move /dev /run/.newroot/dev
+
+cd /run/.newroot
+mkdir run/initramfs/ro
+pivot_root . run/initramfs/ro
+chroot . umount /run/initramfs/ro/run
+exec chroot . /sbin/init
