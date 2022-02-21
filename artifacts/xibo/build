@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+cat << 'EOS' > /tmp/sql
+create database `xibo`;
+create user `xibo`@localhost;
+grant all privileges on `xibo`.* to `xibo`@localhost identified by 'xibo';
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
+download https://github.com/xibosignage/xibo-cms/releases/download/3.0.7/xibo-cms-3.0.7.tar.gz | tar zxf - --strip-components 1  -C /var/www/localhost
+sed -i 's/\/htdocs/\/web/' /etc/apache2/vhosts.d/default_vhost.include
+chown -R apache.apache /var/www/localhost
+
+sed -i 's/^upload_max_filesize.\+$/upload_max_filesize = 512M/' /etc/php/*/php.ini
+sed -i 's/^post_max_size.\+$/post_max_size = 768M/' /etc/php/*/php.ini
+sed -i 's/^memory_limit.\+$/memory_limit=512M/' /etc/php/*/php.ini
+sed -i 's/^max_execution_time.\+$/max_execution_time = 120/' /etc/php/*/php.ini
+sed -i 's/^;default_charset.\+$/default_charset="UTF-8"/' /etc/php/*/php.ini
+

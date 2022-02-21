@@ -1,6 +1,6 @@
 @common
 @samba
-@redmine
+#@redmine # due to compatibility error
 @jenkins
 @nextcloud
 @tt-rss
@@ -8,6 +8,7 @@
 @chrome
 @arduino
 @xen
+@xibo
 app-editors/vim
 app-editors/nano
 www-servers/nginx
@@ -84,9 +85,6 @@ dev-util/debootstrap
 
 net-misc/socat
 net-ftp/ftp
-
-#rails
-dev-ruby/rails
 
 #mssql
 sys-process/numactl

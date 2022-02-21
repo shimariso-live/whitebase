@@ -1,3 +1,4 @@
+dev-ruby/rails
 dev-db/mysql
 mail-mta/postfix
 net-fs/samba

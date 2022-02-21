@@ -114,6 +114,7 @@ dev-php/xdebug-handler
 =dev-php/symfony-event-dispatcher-2.8.50
 =dev-php/symfony-dependency-injection-2.8.50
 =dev-php/symfony-config-2.8.20
+dev-php/pecl-zmq # for xibo
 
 #gui
 app-crypt/gcr
