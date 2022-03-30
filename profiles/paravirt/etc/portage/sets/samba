@@ -1,3 +1,8 @@
 net-fs/samba
 dev-python/xxhash
 app-misc/fdupes
+media-video/ffmpeg
+www-servers/nginx
+dev-libs/yajl # mod_security needs yajl
+dev-python/python-magic
+app-misc/screen
