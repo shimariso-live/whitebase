@@ -18,6 +18,7 @@ if ! mountpoint -q /run/.rw; then
 fi
 if mountpoint -q /run/.rw; then
 	mkdir -p /run/.rw/root /run/.rw/work /run/.newroot
+	rm -f /run/.rw/root/etc/ld.so.cache
 	if mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay /run/.newroot; then
 		echo "Root filesystem mounted."
 	else
