@@ -1,2 +1,3 @@
 #!/bin/sh
 touch -h /usr/bin/vi 
+sed -i 's/^\(.*g:skip_defaults_vim.*\)$/" \1/' /etc/vim/vimrc
