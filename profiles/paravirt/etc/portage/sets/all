@@ -1,6 +1,6 @@
 @common
 @samba
-#@redmine # due to compatibility error
+@redmine
 @jenkins
 @nextcloud
 @tt-rss
@@ -11,11 +11,9 @@
 @xibo
 app-editors/vim
 app-editors/nano
-www-servers/nginx
 dev-util/strace
 
 media-video/motion
-www-servers/nginx
 dev-lua/luajson
 dev-lua/luasec
 dev-db/mysql-init-scripts
@@ -37,7 +35,6 @@ dev-python/matplotlib
 dev-python/pillow
 
 app-misc/mosquitto
-app-misc/screen
 
 sys-apps/usbutils
 

@@ -84,12 +84,12 @@ dev-libs/libpcre2 pcre16 pcre32
 media-libs/freetype png
 app-editors/gedit -python
 
-dev-ruby/* -ruby_targets_ruby27
-dev-ruby/mysql2 mysql -ruby_targets_ruby27
-www-apache/passenger apache2 -ruby_targets_ruby27
-www-servers/puma -ruby_targets_ruby27
-virtual/rubygems -ruby_targets_ruby27
-virtual/ruby-ssl -ruby_targets_ruby27
+dev-ruby/* -ruby_targets_ruby26 ruby_targets_ruby27
+dev-ruby/mysql2 mysql -ruby_targets_ruby26 ruby_targets_ruby27
+www-apache/passenger apache2 -ruby_targets_ruby26 ruby_targets_ruby27
+www-servers/puma -ruby_targets_ruby26 ruby_targets_ruby27
+virtual/rubygems -ruby_targets_ruby26 ruby_targets_ruby27
+virtual/ruby-ssl -ruby_targets_ruby26 ruby_targets_ruby27
 
 # ms sql server
 sys-auth/sssd -acl -locator -manpages -netlink
