@@ -9,6 +9,7 @@
 @arduino
 @xen
 @xibo
+@docker
 app-editors/vim
 app-editors/nano
 dev-util/strace

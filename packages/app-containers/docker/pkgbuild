@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+mkdir /var/lib/docker
+chmod 750 /var/lib/docker
+

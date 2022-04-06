@@ -37,6 +37,34 @@ mkdir -p /run/.newroot/run/initramfs/rw
 mount --move /run/.rw /run/.newroot/run/initramfs/rw
 mount --move /dev /run/.newroot/dev
 
+if [ -d /run/.newroot/var/lib/docker ]; then
+	if [ ! -d /run/.newroot/run/initramfs/rw/docker ]; then
+		if mkdir /run/.newroot/run/initramfs/rw/docker; then
+			echo -n "Setting up Docker data directory..."
+			cp -a /run/.newroot/var/lib/docker/. /run/.newroot/run/initramfs/rw/docker/
+			echo "Done."
+		fi
+	fi
+	if [ -d /run/.newroot/run/initramfs/rw/docker ]; then
+		mount -o bind /run/.newroot/run/initramfs/rw/docker /run/.newroot/var/lib/docker
+		echo "Docker data directory mounted."
+	fi
+fi
+
+if [ -d /run/.newroot/var/lib/mysql ]; then
+	if [ ! -d /run/.newroot/run/initramfs/rw/mysql ]; then
+		if mkdir /run/.newroot/run/initramfs/rw/mysql; then
+			echo -n "Setting up MySQL data directory..."
+			cp -a /run/.newroot/var/lib/mysql/. /run/.newroot/run/initramfs/rw/mysql/
+			echo "Done."
+		fi
+	fi
+	if [ -d /run/.newroot/run/initramfs/rw/mysql ]; then
+		mount -o bind /run/.newroot/run/initramfs/rw/mysql /run/.newroot/var/lib/mysql
+		echo "MySQL data directory mounted."
+	fi
+fi
+
 cd /run/.newroot
 mkdir run/initramfs/ro
 pivot_root . run/initramfs/ro
