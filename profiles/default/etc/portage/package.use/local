@@ -51,7 +51,7 @@ dev-vcs/git -perl -gpg -python
 net-analyzer/net-snmp -python
 net-dns/avahi -dbus -gdbm ipv6 -nls -systemd -introspection
 net-wireless/wpa_supplicant dbus
-net-dns/dnsmasq dhcp-tools script
+net-dns/dnsmasq dhcp-tools script dnssec
 net-misc/dropbear -pam -shadow -syslog -zlib minimal
 
 # misc
