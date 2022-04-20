@@ -1,7 +1,7 @@
 @walbrix
 @genpack-install
 @debug
-app-emulation/xen-tools
+# app-emulation/xen-tools # suspended because missing dependency harms
 
 # stubvm
 net-dns/avahi
