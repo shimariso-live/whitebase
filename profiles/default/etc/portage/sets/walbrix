@@ -94,10 +94,13 @@ app-backup/btrbk
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
 sys-firmware/bluez-firmware
+dev-util/cmake # for ESP-IDF
 
 net-fs/samba
 net-fs/ksmbd-tools
 net-analyzer/zabbix
+
+dev-python/pip # for esp-idf
 
 dev-libs/libvterm
 media-sound/alsa-utils
@@ -117,3 +120,5 @@ virtual/freedesktop-icon-theme
 dev-libs/yajl
 media-gfx/qrencode
 
+# devel
+sys-devel/patch
