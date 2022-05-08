@@ -1,4 +1,3 @@
-dev-ruby/rails
 dev-db/mysql
 mail-mta/postfix
 net-fs/samba
@@ -6,7 +5,6 @@ sys-fs/xfsprogs
 dev-vcs/git
 dev-util/ragel
 dev-ruby/cliver
-dev-ruby/actionpack-xml_parser
 dev-ruby/chunky_png
 dev-ruby/docile
 dev-ruby/rexml
@@ -51,7 +49,6 @@ dev-ruby/marcel
 #dev-ruby/nio4r # due to ruby2.7 incompatibility
 dev-ruby/sprockets-rails
 www-servers/puma
-dev-ruby/railties
 dev-ruby/addressable
 dev-ruby/ffi
 dev-ruby/mysql2

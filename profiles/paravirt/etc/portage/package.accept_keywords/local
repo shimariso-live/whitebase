@@ -13,7 +13,7 @@ net-analyzer/snort
 =app-arch/rpm-4.16.0
 
 #rails
-=dev-ruby/rake-13.0.3
+dev-ruby/rake
 dev-ruby/rails
 app-eselect/eselect-rails
 =dev-ruby/concurrent-ruby-1.1.7
@@ -59,6 +59,7 @@ dev-ruby/globalid
 =dev-ruby/rmagick-4.1.2
 =dev-ruby/method_source-1.0.0
 =www-apache/passenger-6.0.7
+dev-ruby/regexp_parser
 
 #redmine
 =dev-ruby/public_suffix-4.0.6
@@ -101,6 +102,13 @@ www-servers/puma
 =dev-ruby/simplecov-0.18.5
 =dev-ruby/actionpack-xml_parser-2.0.1-r1
 dev-ruby/css_parser
+
+#huginn
+dev-ruby/racc
+dev-ruby/debug_inspector
+dev-ruby/mimemagic
+dev-ruby/rails-html-sanitizer
+dev-ruby/sprockets-rails
 
 #php
 dev-php/composer

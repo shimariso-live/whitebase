@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+HUGINN_HOME=/home/huginn
+PATH=$PATH:`ruby -e 'print Gem.path.map { |p| p + "/bin" }.join(":")'`
+cd $HUGINN_HOME
+if egrep -q '^APP_SECRET_TOKEN=REPLACE_ME_NOW!$' .env; then
+	sed -i 's/^APP_SECRET_TOKEN=REPLACE_ME_NOW!$/APP_SECRET_TOKEN='`rake secret`'/' .env
+	bundle exec rake db:migrate
+	bundle exec rake db:seed
+else
+	bundle exec rake db:migrate
+fi
+bundle exec rake assets:precompile
+exec bundle exec foreman start

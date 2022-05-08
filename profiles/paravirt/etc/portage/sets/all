@@ -10,6 +10,7 @@
 @xen
 @xibo
 @docker
+@huginn
 app-editors/vim
 app-editors/nano
 dev-util/strace

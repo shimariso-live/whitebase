@@ -1,0 +1,2 @@
+huginn ALL=/bin/systemctl * huginn,/bin/systemctl * huginn.service
+

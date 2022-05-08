@@ -1,0 +1,12 @@
+[Unit]
+Description=huginn
+ConditionPathExists=/home/huginn
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/huginn
+User=huginn
+WorkingDirectory=/home/huginn
+
+[Install]
+WantedBy=multi-user.target

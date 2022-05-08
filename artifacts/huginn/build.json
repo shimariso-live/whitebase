@@ -1,0 +1,5 @@
+{
+	"profile":"paravirt",
+	"packages":["@huginn","@common"],
+	"services":["mysqld","postfix","iptables-restore","ip6tables-restore"]
+}
