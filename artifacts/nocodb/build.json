@@ -1,0 +1,5 @@
+{
+	"profile":"paravirt",
+	"packages":["nodejs","mysql","sudo","@common"],
+	"services":["cronie","qemu-guest-agent","mysqld","iptables-restore","ip6tables-restore"]
+}

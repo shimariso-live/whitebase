@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+useradd -d /home/nocodb nocodb
+cd /home/nocodb
+git clone https://github.com/nocodb/nocodb-seed
+cd nocodb-seed
+npm install
+chown -R nocodb.nocodb /home/nocodb
+
+cat << 'EOS' > /tmp/sql
+create database `nocodb`;
+create user `nocodb`@localhost;
+grant all privileges on `nocodb`.* to `nocodb`@localhost identified by 'nocodb';
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
+systemctl enable nocodb

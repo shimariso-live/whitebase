@@ -1,0 +1,13 @@
+[Unit]
+Description=nocodb
+ConditionPathExists=/home/nocodb/nocodb-seed
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/npm start
+User=nocodb
+WorkingDirectory=/home/nocodb/nocodb-seed
+EnvironmentFile=/home/nocodb/env
+
+[Install]
+WantedBy=multi-user.target
