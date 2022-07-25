@@ -1,5 +1,4 @@
->=dev-lang/python-3.10
-<dev-lang/python-3.9
+<dev-lang/python-3.10
 <dev-lang/ruby-2.7
 >=dev-lang/ruby-2.8
 dev-ruby/railties # should be installed by gem/bundler
