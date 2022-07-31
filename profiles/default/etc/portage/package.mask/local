@@ -1,5 +1,4 @@
-<dev-lang/python-3.9
->=dev-lang/python-3.10
+<dev-lang/python-3.10
 x11-libs/gtk+
 <dev-cpp/gtkmm-4
->=app-arch/rpm-4.17 # to prevent using sqlite db
+
