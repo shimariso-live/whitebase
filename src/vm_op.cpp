@@ -200,12 +200,16 @@ int create_vm(const std::string& vmname, const std::string& volume, uint32_t mem
             f << "cpu=" << std::to_string(cpu) << std::endl;
         }
 
+        if (data_partition) {
+            auto data_file = volume_vm_dir / "data";
+            std::string size_str = std::to_string(data_partition.value()) + "G";
+            check_call({"touch", data_file});
+            check_call({"chattr", "+C", data_file});
+            check_call({"fallocate", "-l", size_str, data_file});
+        }
+
         if (stub) {
             check_call({"cp", "-a", "/usr/share/wb/stubvm/.", fs_dir.string()});
-            if (data_partition) {
-                std::string size_str = std::to_string(data_partition.value()) + "G";
-                check_call({"truncate", "-s", size_str, volume_vm_dir / "data"});
-            }
 
             auto stubroot = fs_dir / ".stubroot";
 
