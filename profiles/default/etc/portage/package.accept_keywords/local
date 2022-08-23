@@ -9,15 +9,18 @@ sys-process/cronie
 app-emulation/xen-tools
 app-emulation/qemu # for qemu 6.1
 sys-firmware/edk2-ovmf # for qemu 6.1
+dev-util/gdbus-codegen
 
 # ui
 dev-cpp/argparse
 media-libs/libepoxy # for https://github.com/anholt/libepoxy/pull/238/commits/dbfa4b209c0712b67dfeb8366c2ebe8503063b52
-=dev-cpp/gtkmm-4.2.0
-=dev-cpp/glibmm-2.68.1
-=dev-cpp/cairomm-1.16.1
-=dev-cpp/pangomm-2.48.1
-=dev-libs/libsigc++-3.0.7
+x11-themes/adwaita-icon-theme
+dev-cpp/gtkmm
+dev-libs/glib
+dev-cpp/glibmm
+dev-cpp/cairomm
+dev-cpp/pangomm
+dev-libs/libsigc++
 dev-libs/weston
 dev-libs/wayland-protocol
 dev-cpp/picojson
@@ -29,3 +32,4 @@ net-misc/eventd
 
 # misc
 net-fs/ksmbd-tools
+dev-util/debootstrap
