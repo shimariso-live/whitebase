@@ -21,7 +21,7 @@ libproj.a: $(OBJS)
 	gcc $(CFLAGS) -c $< -o $@
 
 wb: wb.cpp libproj.a
-	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lsmartcols -lyajl -lproj -lwayland-client -luuid -lssl -lcrypto -lcurl -lqrencode -liniparser4 $(shell pkg-config gtkmm-4.0 --libs)
+	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ wb.cpp -L . -lutil -licuuc -lvterm -lpam -lmount -lblkid -lbtrfsutil -lsmartcols -lyajl -lproj -lwayland-client -luuid -lssl -lcrypto -lcurl -lqrencode -liniparser4 $(shell pkg-config gtkmm-4.0 --libs)
 
 wg-walbrix: wg-walbrix.cpp crypt.o common.o
 	g++ $(CXXFLAGS) -o $@ -D__MAIN_MODULE__ $^ -lyajl -lcurl -lssl -lcrypto -liniparser4 -lutil

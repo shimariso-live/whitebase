@@ -1,4 +1,5 @@
 #include <sys/statvfs.h>
+#include <sys/wait.h>
 
 #include <filesystem>
 #include <fstream>
@@ -6,6 +7,7 @@
 #include <libmount/libmount.h>
 #include <blkid/blkid.h>
 #include <libsmartcols/libsmartcols.h>
+#include <btrfsutil.h>
 
 #include <argparse/argparse.hpp>
 
@@ -264,10 +266,97 @@ static int list(const std::vector<std::string>& args)
     return 0;
 }
 
+void backup(const std::filesystem::path& path)
+{
+    if (btrfs_util_is_subvolume(path.c_str()) != BTRFS_UTIL_OK) {
+        std::cerr << path << " is not a btrfs volume" << std::endl;
+        return;
+    }
+    //else
+    auto head = path / ".snapshots/head";
+
+    // create snapshot
+    if (btrfs_util_is_subvolume(head.c_str()) == BTRFS_UTIL_OK) {
+        struct btrfs_util_subvolume_info subvol;
+        auto rst = btrfs_util_subvolume_info(head.c_str(), 0, &subvol);
+        if (rst != BTRFS_UTIL_OK) {
+            throw std::runtime_error("Inspecting subvolume " + head.string() + " failed(" + btrfs_util_strerror(rst) + ")");
+        }
+        //else
+
+        static const char* DOWSTR[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        auto dow = path / ".snapshots" / DOWSTR[localtime(&subvol.otime.tv_sec)->tm_wday];
+        if (btrfs_util_is_subvolume(dow.c_str()) == BTRFS_UTIL_OK) {
+            btrfs_util_delete_subvolume(dow.c_str(), BTRFS_UTIL_DELETE_SUBVOLUME_RECURSIVE);
+            std::cout << "Snapshot " << dow << " deleted" << std::endl;
+        }
+        std::filesystem::rename(head, dow);
+        std::cout << "Snapshot " << head << " renamed to " << dow << std::endl;
+    }
+    std::filesystem::create_directory(path / ".snapshots");
+    auto rst = btrfs_util_create_snapshot(path.c_str(), head.c_str(), BTRFS_UTIL_CREATE_SNAPSHOT_READ_ONLY, NULL, NULL);
+    if (rst != BTRFS_UTIL_OK) {
+        throw std::runtime_error("Creating readonly snapshot " + head.string() + " failed(" + btrfs_util_strerror(rst) + ")");
+    }
+    sync();
+    std::cout << "Snapshot " << head << " created" << std::endl;
+
+    auto backup_link = path / ".backup";
+    if (!std::filesystem::is_symlink(backup_link)) return;
+
+    auto backup_dir = std::filesystem::weakly_canonical(backup_link);
+    if (!std::filesystem::is_directory(backup_dir)) {
+        throw std::runtime_error("Backup link " + backup_link.string() + " broken");
+    }
+    //else
+
+    std::cout << "Backing up snapshot " << head << " to " << backup_dir << " using rdiff-backup..." << std::endl;
+    auto pid = fork();
+    if (pid < 0) throw std::runtime_error("fork() failed");
+    if (pid == 0) {
+        if (execlp("rdiff-backup", "rdiff-backup", "--preserve-numerical-ids", "--print", 
+            "--exclude", (head / ".trash").c_str(),
+            "--exclude", (head / ".snapshots").c_str(),
+            head.c_str(), backup_dir.c_str(), NULL) < 0) exit(-1);
+    }
+    int wstatus;
+    if (waitpid(pid, &wstatus, 0) < 0) throw std::runtime_error("waitpid() failed");
+    if (!WIFEXITED(wstatus)) throw std::runtime_error("rdiff-backup terminated");
+    if (WEXITSTATUS(wstatus) != 0) throw std::runtime_error("rdiff-backup failed");
+
+    pid = fork();
+    if (pid < 0) throw std::runtime_error("fork() failed");
+    if (pid == 0) {
+        if (execlp("rdiff-backup", "rdiff-backup", 
+            "--remove-older-than", "1W", "--force", backup_dir.c_str(), NULL) < 0) exit(-1);
+    }
+    if (waitpid(pid, &wstatus, 0) < 0) throw std::runtime_error("waitpid() failed");
+    if (!WIFEXITED(wstatus)) throw std::runtime_error("rdiff-backup --remove-older-than terminated");
+    if (WEXITSTATUS(wstatus) != 0) throw std::runtime_error("rdiff-backup --remove-older-than failed");
+}
+
+int backup(const std::vector<std::string>& args)
+{
+    auto volumes = get_volume_list();
+    bool all_success = true;
+    for (const auto& volume : volumes) {
+        if (!volume.second.online) continue; // volume not mounted
+        try {
+            backup(volume.second.path);
+        }
+        catch (const std::runtime_error& e) {
+            std::cerr << e.what() << std::endl;
+            all_success = false;
+        }
+    }
+
+    return all_success? 0 : 1;
+}
+
 int volume(const std::vector<std::string>& _args)
 {
     if (_args.size() < 2) {
-        std::cerr << "Action(add|remove|scan|list) required" << std::endl;
+        std::cerr << "Action(add|remove|scan|list|backup) required" << std::endl;
         return -1;
     }
     
@@ -282,6 +371,8 @@ int volume(const std::vector<std::string>& _args)
         return scan(args);
     } else if (action == "list") {
         return list(args);
+    } else if (action == "backup") {
+        return backup(args);
     }
 
     // else
