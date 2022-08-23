@@ -596,7 +596,7 @@ int vm(const std::string& name)
 //            + ",posix_acl,xattrmap=:ok:all:::"
             + ",xattr,modcaps=" + std::string(virtiofsd_modcaps) + ",allow_direct_io,posix_lock,flock",
         /*"--syslog",*/
-        "-o", std::string("source=") + fs_dir.string(),
+        "-o", std::string("source=") + std::filesystem::weakly_canonical(fs_dir).string(),
         std::string("--socket-path=") + virtiofs_sock.string()
     };
 
