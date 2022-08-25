@@ -1,2 +1,2 @@
-dev-lang/php apache2 bcmath truetype xmlreader gd sysvipc sockets xmlwriter mysqli fpm gd mysql -postgres xslt zip pdo pcntl sysvipc curl sqlite sharedmem tidy exif -cjk intl ldap ftp gmp imap soap
+dev-lang/php apache2 bcmath truetype xmlreader gd sysvipc sockets xmlwriter mysqli fpm gd mysql -postgres xslt zip pdo pcntl sysvipc curl sqlite sharedmem tidy exif -cjk intl ldap ftp gmp imap soap sodium
 
