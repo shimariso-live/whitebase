@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-pushd /var/db/repos/localrepo && repoman manifest || exit 1
+pushd /var/db/repos/localrepo && pkgdev manifest || exit 1
 popd
 
 build-kernel --config /kernel-config.`uname -m`
