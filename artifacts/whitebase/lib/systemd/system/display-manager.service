@@ -1,6 +1,7 @@
 [Unit]
 Description=Weston
 Conflicts=getty@tty1.service
+Requires=seatd.service
 
 [Service]
 Type=notify
