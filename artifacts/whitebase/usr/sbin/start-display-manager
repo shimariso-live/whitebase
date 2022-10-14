@@ -55,5 +55,5 @@ else
 		((c++)) && ((c==3)) && echo "GPU driver not loaded." && break
 	done
 
-	exec /usr/bin/weston --config=$XDG_RUNTIME_DIR/weston.ini --log=$LOGFILE --tty=$TTY --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
+	exec /usr/bin/weston --config=$XDG_RUNTIME_DIR/weston.ini --log=$LOGFILE --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode $ADDITIONAL_OPTS
 fi
