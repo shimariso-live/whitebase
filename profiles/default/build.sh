@@ -1,8 +1,7 @@
 #!/bin/sh
 set -e
 
-pushd /var/db/repos/localrepo && pkgdev manifest || exit 1
-popd
+find /var/db/repos/localrepo -name '*.ebuild' -type f -exec ebuild {} manifest \;
 
 build-kernel --config /kernel-config.`uname -m`
 
