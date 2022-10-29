@@ -7,14 +7,16 @@ sys-fs/bcache-tools
 net-analyzer/snort
 sys-process/cronie
 app-emulation/xen-tools
-app-emulation/qemu # for qemu 6.1
-sys-firmware/edk2-ovmf # for qemu 6.1
+app-emulation/qemu
+sys-firmware/edk2-ovmf-bin
+sys-firmware/seabios-bin
 dev-util/gdbus-codegen
 
 # ui
 dev-cpp/argparse
 media-libs/libepoxy # for https://github.com/anholt/libepoxy/pull/238/commits/dbfa4b209c0712b67dfeb8366c2ebe8503063b52
 x11-themes/adwaita-icon-theme
+gui-libs/gtk
 dev-cpp/gtkmm
 dev-libs/glib
 dev-cpp/glibmm
@@ -33,3 +35,4 @@ net-misc/eventd
 # misc
 net-fs/ksmbd-tools
 dev-util/debootstrap
+dev-python/nuitka
