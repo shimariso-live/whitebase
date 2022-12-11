@@ -47,6 +47,7 @@ dev-ruby/globalid
 dev-ruby/mail
 dev-ruby/marcel
 #dev-ruby/nio4r # due to ruby2.7 incompatibility
+dev-ruby/zeitwerk
 dev-ruby/sprockets-rails
 www-servers/puma
 dev-ruby/addressable
