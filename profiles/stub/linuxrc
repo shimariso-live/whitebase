@@ -1,0 +1,60 @@
+#!/bin/sh
+set -e
+if [ $$ -ne 1 ]; then
+	echo "PID must be 1"
+	exit 1
+fi
+
+mount -t proc proc /proc
+
+if [ -b /dev/vdb ] && mount /dev/vdb /mnt; then
+	echo "/dev/vdb mounted."
+	if [ -f /mnt/etc/redhat-release ]; then
+		KERNEL=`ls -t1 /mnt/boot/vmlinuz-*|head -1`
+		INITRD=`echo $KERNEL|sed 's/vmlinuz/initramfs/'`.img
+	else
+		[ -f /mnt/boot/kernel ] && KERNEL=/mnt/boot/kernel
+		[ -f /mnt/boot/vmlinuz ] && KERNEL=/mnt/boot/vmlinuz
+		[ -f /mnt/boot/initramfs ] && INITRD=/mnt/boot/initramfs
+		[ -f /mnt/boot/initrd.img ] && INITRD=/mnt/boot/initrd.img
+	fi
+	if [ -n "$KERNEL" ]; then
+		echo "Kernel found. will run kexec..."
+		[ -n "$INITRD" ] && INITRD_OPT=--initrd=$INITRD
+		kexec -l "$KERNEL" --append="`cat /proc/cmdline | sed 's/\/dev\/vda/\/dev\/vdb/'`" $INITRD_OPT
+		kexec -e
+	fi
+	#else
+	echo "Kernel not found in /dev/vdb. Unmounting."
+	umount /mnt
+fi
+
+if mount -t virtiofs fs /mnt; then
+	echo "virtiofs available.  TODO: find kernel and kexec"
+	umount /mnt
+fi
+
+umount /proc
+
+mount -t tmpfs tmpfs /run
+mkdir /run/.rw
+mount -t tmpfs tmpfs /run/.rw # This must not fail
+mkdir -p /run/.rw/root /run/.rw/work /run/.newroot
+rm -f /run/.rw/root/etc/ld.so.cache
+if mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay /run/.newroot; then
+	echo "Root filesystem mounted."
+else
+	echo "Root filesystem couldn't be mounted. Halting."
+	exit 1
+fi
+
+mount -t tmpfs tmpfs /run/.newroot/run
+mkdir -p /run/.newroot/run/initramfs/rw
+mount --move /run/.rw /run/.newroot/run/initramfs/rw
+mount --move /dev /run/.newroot/dev
+
+cd /run/.newroot
+mkdir run/initramfs/ro
+pivot_root . run/initramfs/ro
+chroot . umount /run/initramfs/ro/run
+exec chroot . /sbin/init

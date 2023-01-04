@@ -1,0 +1,7 @@
+sys-kernel/gentoo-sources symlink
+sys-kernel/genkernel -firmware
+sys-auth/pambase -passwdqc
+app-editors/vim minimal
+sys-apps/kexec-tools lzma
+app-arch/rpm lua caps lua_single_target_lua5-4
+app-crypt/libb2 -openmp
