@@ -1,33 +1,28 @@
 #!/bin/sh
 set -e
 /lib/systemd/systemd-networkd-wait-online
-BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos/7/os/x86_64/
+BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos-stream/9-stream/BaseOS/x86_64/os/
 
-
-/sbin/mkfs.xfs -m crc=0 -n ftype=0 -f /dev/vdb
+/sbin/mkfs.xfs -f /dev/vdb
 mount /dev/vdb /mnt
-mkdir /mnt/dev /mnt/proc
-mount -t proc proc /mnt/proc
-cp -a /dev/null /dev/urandom /mnt/dev/
+
+mkdir /mnt/dev /mnt/proc /mnt/sys
+mount -o bind /proc /mnt/proc
+mount -o bind /sys /mnt/sys
+mount -o bind /dev /mnt/dev
 
 mkdir -p /mnt/etc/dracut.conf.d
-echo 'filesystems+=" xfs "' > /mnt/etc/dracut.conf.d/xfs.conf
+echo 'add_drivers+=" virtiofs "' > /mnt/etc/dracut.conf.d/virtiofs.conf
 
-rpmbootstrap $BASE_URL /mnt yum
+rpmbootstrap $BASE_URL /mnt "dnf" "passwd" "vim-minimal" "strace" "less" "policycoreutils" "grubby" "kernel" "tar" "openssh-server" "openssh-clients" "avahi" "NetworkManager" "iproute" "iputils"
 
-echo -e 'search local\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4860:4860::8888\nnameserver 2001:4860:4860::8844' > /mnt/etc/resolv.conf
-
-rm /mnt/var/lib/rpm/*
-chroot /mnt rpm --rebuilddb
-echo 7 > /mnt/etc/yum/vars/releasever
-chroot /mnt yum install -y "yum" "passwd" "vim-minimal" "strace" "less" "kernel" "tar" "openssh-server" "openssh-clients" "avahi" "NetworkManager" "xfsprogs" "qemu-guest-agent"
-
-hostname > /mnt/etc/hostname
 echo -e 'DEVICE="eth0"\nBOOTPROTO=dhcp\nONBOOT=yes\nTYPE="Ethernet"' > /mnt/etc/sysconfig/network-scripts/ifcfg-eth0
+echo -e 'search local\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4860:4860::8888\nnameserver 2001:4860:4860::8844' > /mnt/etc/resolv.conf
 sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
 sed -i 's/^use-ipv6=no$/use-ipv6=yes/' /mnt/etc/avahi/avahi-daemon.conf
 echo 'LANG=ja_JP.utf8' > /mnt/etc/locale.conf
 [ -f /etc/localtime ] && cp -a /etc/localtime /mnt/etc/
+
 touch /mnt/etc/sysconfig/network
 
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
@@ -46,9 +41,11 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-
+chroot /mnt dnf install -y qemu-guest-agent
 chroot /mnt systemctl enable sshd avahi-daemon llmnrd qemu-guest-agent
 
+umount /mnt/dev
+umount /mnt/sys
 umount /mnt/proc
 umount /mnt
 

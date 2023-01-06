@@ -21,7 +21,7 @@ if [ -b /dev/vdb ] && mount /dev/vdb /mnt; then
 	if [ -n "$KERNEL" ]; then
 		echo "Kernel found. will run kexec..."
 		[ -n "$INITRD" ] && INITRD_OPT=--initrd=$INITRD
-		kexec -l "$KERNEL" --append="`cat /proc/cmdline | sed 's/\/dev\/vda/\/dev\/vdb/'`" $INITRD_OPT
+		kexec -l "$KERNEL" --append="`cat /proc/cmdline | sed 's/\/dev\/vda/\/dev\/vdb/' | sed 's/ ro / rw /'`" $INITRD_OPT
 		kexec -e
 	fi
 	#else

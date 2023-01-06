@@ -6,4 +6,6 @@ dev-util/strace
 sys-apps/kexec-tools
 dev-util/debootstrap
 app-arch/rpm
+dev-cpp/argparse # for rpmbootstrap
 sys-fs/btrfs-progs
+sys-fs/xfsprogs
