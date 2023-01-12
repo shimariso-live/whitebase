@@ -13,6 +13,7 @@ echo -e 'network:\n  version: 2\n  renderer: networkd\n  ethernets:\n    eth0:\n
 [ -f /etc/localtime ] && cp -a /etc/localtime /mnt/etc/
 
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
+[ -d /etc/ssh -a -d /mnt/etc/ssh ] && cp -a /etc/ssh/*_key /etc/ssh/*_key.pub /mnt/etc/ssh/
 
 umount /mnt
 reboot

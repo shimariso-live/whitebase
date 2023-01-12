@@ -38,6 +38,7 @@ echo -e 'NETWORKING=yes\nHOSTNAME="'`hostname`'"' > /mnt/etc/sysconfig/network
 sed -i 's/^ACTIVE_CONSOLES=.*/ACTIVE_CONSOLES=/' /mnt/etc/sysconfig/init
 
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
+[ -d /etc/ssh -a -d /mnt/etc/ssh ] && cp -a /etc/ssh/*_key /etc/ssh/*_key.pub /mnt/etc/ssh/
 
 cp -a /sbin/llmnrd /mnt/usr/sbin/
 

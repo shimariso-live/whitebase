@@ -26,6 +26,7 @@ echo 'LANG=ja_JP.utf8' > /mnt/etc/locale.conf
 touch /mnt/etc/sysconfig/network
 
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
+[ -d /etc/ssh -a -d /mnt/etc/ssh ] && cp -a /etc/ssh/*_key /etc/ssh/*_key.pub /mnt/etc/ssh/
 
 cp -a /sbin/llmnrd /mnt/usr/sbin/
 cat <<EOF > /mnt/etc/systemd/system/llmnrd.service
