@@ -9,14 +9,15 @@ mount -t proc proc /proc
 
 if [ -b /dev/vdb ] && mount /dev/vdb /mnt; then
 	echo "/dev/vdb mounted."
-	if [ -f /mnt/etc/redhat-release ]; then
-		KERNEL=`ls -t1 /mnt/boot/vmlinuz-*|head -1`
-		INITRD=`echo $KERNEL|sed 's/vmlinuz/initramfs/'`.img
-	else
-		[ -f /mnt/boot/kernel ] && KERNEL=/mnt/boot/kernel
-		[ -f /mnt/boot/vmlinuz ] && KERNEL=/mnt/boot/vmlinuz
-		[ -f /mnt/boot/initramfs ] && INITRD=/mnt/boot/initramfs
-		[ -f /mnt/boot/initrd.img ] && INITRD=/mnt/boot/initrd.img
+	[ -f /mnt/boot/kernel ] && KERNEL=/mnt/boot/kernel
+	[ -f /mnt/boot/vmlinuz ] && KERNEL=/mnt/boot/vmlinuz
+	[ -f /mnt/boot/initramfs ] && INITRD=/mnt/boot/initramfs
+	[ -f /mnt/boot/initrd.img ] && INITRD=/mnt/boot/initrd.img
+	if [ -z "$KERNEL" ]; then
+		if ls /mnt/boot/vmlinuz-* >/dev/null 2>&1 ; then
+			KERNEL=`ls -t1 /mnt/boot/vmlinuz-*|egrep -v '\.old$'|head -1`
+			INITRD=`echo $KERNEL|sed 's/vmlinuz/initramfs/'`.img
+		fi
 	fi
 	if [ -n "$KERNEL" ]; then
 		echo "Kernel found. will run kexec..."
@@ -39,22 +40,38 @@ umount /proc
 mount -t tmpfs tmpfs /run
 mkdir /run/.rw
 mount -t tmpfs tmpfs /run/.rw # This must not fail
-mkdir -p /run/.rw/root /run/.rw/work /run/.newroot
+
+NEWROOT=/run/.newroot
+
+mkdir -p /run/.rw/root /run/.rw/work $NEWROOT
 rm -f /run/.rw/root/etc/ld.so.cache
-if mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay /run/.newroot; then
+if mount -t overlay -o lowerdir=/,upperdir=/run/.rw/root,workdir=/run/.rw/work overlay $NEWROOT; then
 	echo "Root filesystem mounted."
 else
 	echo "Root filesystem couldn't be mounted. Halting."
 	exit 1
 fi
 
-mount -t tmpfs tmpfs /run/.newroot/run
-mkdir -p /run/.newroot/run/initramfs/rw
-mount --move /run/.rw /run/.newroot/run/initramfs/rw
-mount --move /dev /run/.newroot/dev
+mount -t tmpfs tmpfs $NEWROOT/run
+mount -t sysfs sysfs $NEWROOT/sys
 
-cd /run/.newroot
+QEMU_FW_CFG_BY_NAME=$NEWROOT/sys/firmware/qemu_fw_cfg/by_name
+
+if [ -f $QEMU_FW_CFG_BY_NAME/opt/ssh-public-key/raw ]; then
+        cat $QEMU_FW_CFG_BY_NAME/opt/ssh-public-key/raw >> $NEWROOT/root/.ssh/authorized_keys
+fi
+
+if [ -f $QEMU_FW_CFG_BY_NAME/opt/ssh-host-keys/raw ]; then
+	tar xf $QEMU_FW_CFG_BY_NAME/opt/ssh-host-keys/raw -k -C $NEWROOT/etc/ssh || echo "SSH host keys not extracted."
+fi
+
+mkdir -p $NEWROOT/run/initramfs/rw
+mount --move /run/.rw $NEWROOT/run/initramfs/rw
+mount --move /dev $NEWROOT/dev
+
+cd $NEWROOT
 mkdir run/initramfs/ro
 pivot_root . run/initramfs/ro
 chroot . umount /run/initramfs/ro/run
 exec chroot . /sbin/init
+
