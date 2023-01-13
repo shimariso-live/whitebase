@@ -1,11 +1,16 @@
 [Unit]
 Description=Weston
 Conflicts=getty@tty1.service
-Requires=seatd.service
+Requires=dev-dri-card0.device
+After=dev-dri-card0.device systemd-user-sessions.service
 
 [Service]
+User=root
+WorkingDirectory=%h
+PAMName=login
+TTYPath=/dev/tty1
 Type=notify
-ExecStart=/usr/sbin/start-display-manager
+ExecStart=weston --modules=systemd-notify.so --shell=kiosk-shell.so 
 Restart=always
 RestartSec=1
 

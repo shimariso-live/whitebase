@@ -108,17 +108,18 @@ dev-cpp/argparse
 app-admin/ansible
 app-admin/logrotate
 
-app-arch/rpm
-dev-util/debootstrap
+#app-arch/rpm
+#dev-util/debootstrap
 app-emulation/qemu
+
+# wb/vm
+media-gfx/qrencode
+dev-cpp/nlohmann_json
 
 # gtk4
 dev-cpp/gtkmm
 virtual/freedesktop-icon-theme
 
-# wb
-dev-libs/yajl
-media-gfx/qrencode
-
 # devel
 sys-devel/patch
+

@@ -6,6 +6,7 @@ sys-kernel/gentoo-sources symlink
 
 # to force rebuild systemd
 sys-apps/systemd -acl static-libs
+app-crypt/libb2 -openmp # not to depend on gcc
 
 sys-apps/util-linux static-libs -python
 virtual/libudev static-libs
@@ -27,7 +28,7 @@ sys-power/nut usb
 net-fs/nfs-utils -tcpd
 sys-apps/kmod lzma -python
 sys-libs/ncurses tinfo
-sys-fs/lvm2 -readline systemd -thin udev
+sys-fs/lvm2 lvm -readline systemd -thin udev
 net-misc/rsync xxhash
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
@@ -39,7 +40,7 @@ x11-libs/cairo -X
 # wbui
 gui-libs/gtk -X introspection -broadway -cloudprint -colord -cups -examples -gstreamer -gtk-doc -sysprof -test wayland -xinerama
 media-libs/libepoxy -X
-dev-libs/weston -X desktop headless launch rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp -fbdev seatd
+dev-libs/weston -X desktop headless launch rdp resize-optimization suid systemd -colord drm -editor -examples -fullscreen gles2 jpeg kiosk wayland-compositor webp -fbdev -seatd
 net-misc/freerdp -ffmpeg server
 media-libs/mesa -X wayland classic dri3 egl gallium gles1 gles2 llvm osmesa -vulkan -zstd video_cards_vmware video_cards_virgl
 x11-libs/libdrm video_cards_vmware

@@ -7,16 +7,47 @@ echo $VERSION > /.genpack/version
 
 # services preferred by installer/rescue env
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-networkd.service
-sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/systemd-resolved.service
+# need 'rm -rf /run/initramfs/rw/root/etc/systemd/system/sysinit.target.wants'
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/sshd.service
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/openvpn-client@.service
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/zabbix-agentd.service
 
 g++ -std=c++2a -o /usr/sbin/genpack-install /usr/src/genpack-install.cpp -lmount -lblkid
-g++ -I /usr/include/libxml2 -std=c++20 -static-libgcc -static-libstdc++ -o /usr/bin/rpmbootstrap /usr/src/rpmbootstrap.cpp -lxml2 -lcurl
 
 touch /usr/sbin/do-with-lvm-snapshot
-touch /usr/sbin/genbootstrap
+
+mkdir -p /var/cache/repos
+
+if [ -d /var/cache/repos/vm ]; then
+        cd /var/cache/repos/vm
+        git pull
+else
+        git clone https://github.com/shimarin/vm.git /var/cache/repos/vm
+        cd /var/cache/repos/vm
+fi
+make vm
+cp -a vm /usr/bin/
+
+if [ -d /var/cache/repos/wghub ]; then
+        cd /var/cache/repos/wghub
+        git pull
+else
+        git clone  https://github.com/shimarin/wghub.git /var/cache/repos/wghub
+        cd /var/cache/repos/wghub
+fi
+make libwghub.a
+make install
+
+if [ -d /var/cache/repos/wb ]; then
+        cd /var/cache/repos/wb
+        git pull
+else
+        git clone https://github.com/wbrxcorp/wb.git /var/cache/repos/wb
+        cd /var/cache/repos/wb
+fi
+make wb
+cp -a wb /usr/bin/
+
 
 #/etc/udev/hwdb.bin
 #/usr/bin/cpuid2cpuflags
@@ -25,50 +56,10 @@ touch /usr/sbin/genbootstrap
 #$require omronups.lst
 #$require s3fs.lst
 
-cd /usr/src/walbrix
-make
-make install
-
-# setup stubvm
-STUBVM=/usr/share/wb/stubvm
-STUBROOT=$STUBVM/.stubroot
-
-# init
-mkdir -p $STUBVM/etc
-gcc -static -o $STUBVM/etc/init /usr/src/stubinit.c
-
-# kernel
-mkdir -p $STUBVM/boot/grub
-cp /boot/kernel $STUBVM/boot/kernel
-
-# llmnrd
-mkdir -p $STUBROOT/sbin /tmp/llmnrd
-download https://github.com/tklauser/llmnrd/archive/refs/tags/v0.7.tar.gz > /usr/share/wb/stubvm/.stubroot/sbin/llmnrd.src.tar.gz
-tar xf $STUBROOT/sbin/llmnrd.src.tar.gz --strip-components=1 -C /tmp/llmnrd
-cd /tmp/llmnrd
-gcc -static -o $STUBROOT/sbin/llmnrd -DVERSION_STRING="\"v`egrep '^VERSION = ' Makefile | sed 's/.*= //'`\"" -DGIT_VERSION='""' -DPIDFILE='"/run/llmnrd.pid"' llmnr.c iface.c socket.c util.c log.c llmnrd.c
-
-# dropbear, qemu-ga, nss
-LIBDIR=/lib64
-if [ ! -d /lib64 ]; then
-	LIBDIR=/lib
-fi
-
-# setup stubroot
-lddtree -l /bin/busybox /bin/bash /sbin/mkfs.btrfs /sbin/mkfs.xfs /usr/sbin/dropbear /usr/bin/qemu-ga /usr/sbin/avahi-daemon /usr/bin/wg /usr/bin/strace /usr/bin/perl /usr/bin/rpm /usr/bin/rpmbootstrap /usr/bin/iperf3 /usr/bin/zstd* /sbin/ksmbd.* $LIBDIR/libnss_files.so.2 $LIBDIR/libnss_dns.so.2 | sort | uniq > /tmp/stubroot-files
-echo -e '/sbin/ldconfig\n/usr/share/udhcpc/default.script\n/usr/bin/wg-quick' >> /tmp/stubroot-files
-modprobe -S `ls /lib/modules` --show-depends ksmbd | sed 's/\(^insmod \|\s\+$\)//g' >> /tmp/stubroot-files
-rsync -L --files-from=/tmp/stubroot-files / $STUBROOT
-
-# debootstrap, rpm
-mkdir -p $STUBROOT/usr/sbin $STUBROOT/usr/share $STUBROOT/usr/lib64 $STUBROOT/usr/libexec
-cp -a /usr/sbin/debootstrap $STUBROOT/usr/sbin/
-cp -a /usr/share/debootstrap $STUBROOT/usr/share/
-cp -a /usr/libexec/rpm $STUBROOT/usr/libexec/
-
-# zoneinfo
-cp -a /usr/share/zoneinfo $STUBROOT/usr/share/
+#cd /usr/src/walbrix
+#make
+#make install
 
 mkdir -p /var/vm/\@default
 
-systemctl enable scan-volumes generate-wg-walbrix-key notify-status
+systemctl enable scan-volumes generate-wg-walbrix-key notify-status display-manager wbui installer.service

@@ -6,7 +6,7 @@ ConditionDirectoryNotEmpty=/var/vm/%i
 
 [Service]
 Type=notify
-ExecStart=/usr/sbin/vm %i
+ExecStart=/usr/bin/vm service --bridge=br0 %i
 KillMode=mixed
 TimeoutStopSec=180
 

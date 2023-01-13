@@ -1,9 +1,16 @@
 [Unit]
 Description=Weston RDP
+Requires=network-online.target
+After=network-online.target
+After=systemd-user-sessions.service
 
 [Service]
+User=root
+WorkingDirectory=%h
+PAMName=login
 Type=notify
-ExecStart=/usr/sbin/start-display-manager rdp
+ExecStartPre=/usr/bin/wb misc generate-rdp-cert
+ExecStart=weston --socket=wayland-rdp --modules=systemd-notify.so --backend=rdp-backend.so --rdp-tls-key=/etc/ssl/private/rdp.key --rdp-tls-cert=/etc/ssl/certs/rdp.crt --address=::
 Restart=always
 RestartSec=1
 

@@ -1,0 +1,16 @@
+diff --git a/squashfs-tools/unsquash-4.c b/squashfs-tools/unsquash-4.c
+index 1183700..92c8d13 100644
+--- a/squashfs-tools/unsquash-4.c
++++ b/squashfs-tools/unsquash-4.c
+@@ -360,11 +360,6 @@ static struct dir *squashfs_opendir(unsigned int block_start, unsigned int offse
+ 
+ 	*i = read_inode(block_start, offset);
+ 
+-	if(inumber_lookup((*i)->inode_number)) {
+-		ERROR("File System corrupted: directory loop detected\n");
+-		return NULL;
+-	}
+-
+ 	dir = malloc(sizeof(struct dir));
+ 	if(dir == NULL)
+ 		MEM_ERROR();

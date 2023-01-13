@@ -1,0 +1,18 @@
+[Unit]
+Description=Walbrix Installer
+Conflicts=wbui.service
+Requires=display-manager.service
+After=display-manager.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=~
+ExecStart=/usr/bin/wbui installer
+Restart=always
+RestartSec=1
+Environment=XDG_RUNTIME_DIR=/run/user/0
+Environment=WAYLAND_DISPLAY=wayland-1
+
+[Install]
+WantedBy=installer.target
