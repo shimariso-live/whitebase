@@ -5,7 +5,7 @@ After=wg-quick@wg-walbrix.service ldconfig.service
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/wb wg notify /%H/start?version=%A
-ExecStop=/use/bin/wb wg notify /%H/stop
+ExecStop=/usr/bin/wb wg notify /%H/stop
 RemainAfterExit=yes
 
 [Install]
