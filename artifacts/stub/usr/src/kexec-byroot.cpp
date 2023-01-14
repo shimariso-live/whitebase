@@ -28,6 +28,25 @@ static std::vector<std::string> parse_cmdline(const std::string& cmdline)
 	return cmdline_args;
 }
 
+static bool has_root_enry_in_fstab(const std::filesystem::path& rootdir)
+{
+	std::ifstream fstab(rootdir / "etc" / "fstab");
+	if (!fstab) return false;
+	//else
+	while (!fstab.eof()) {
+		std::string line;
+		std::getline(fstab, line);
+		auto poundpos = line.find_first_of('#');
+		if (poundpos != line.npos) line.replace(poundpos, line.length(), "");
+		std::istringstream iss(line);
+		std::string device, path;
+		iss >> device >> path;
+		if (device != "" && path == "/") return true;
+	}
+
+	return false;
+}
+
 static int kexec_boot(const std::filesystem::path& rootdir, bool quiet)
 {
 	if (!std::filesystem::exists(rootdir) || !std::filesystem::is_directory(rootdir)) {
@@ -113,7 +132,7 @@ static int kexec_boot(const std::filesystem::path& rootdir, bool quiet)
 
 	auto cmdline_args = parse_cmdline(cmdline);
 	std::string new_cmdline;
-	bool has_fstab = std::filesystem::exists(rootdir / "etc" / "fstab");
+	bool has_fstab = has_root_enry_in_fstab(rootdir);
 	bool has_rw = false;
 	for (const auto& arg:cmdline_args) {
 		if (new_cmdline != "") new_cmdline += ' ';
