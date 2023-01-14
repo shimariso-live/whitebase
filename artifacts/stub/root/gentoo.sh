@@ -26,6 +26,7 @@ cp /etc/resolv.conf /mnt/etc/
 [ -d /etc/ssh -a -d /mnt/etc/ssh ] && cp -a /etc/ssh/*_key /etc/ssh/*_key.pub /mnt/etc/ssh/
 chroot /mnt emerge gentoo-kernel-bin
 chroot /mnt systemctl enable systemd-resolved sshd
+mv /mnt/etc/issue.logo /mnt/etc/issue
 umount /mnt/dev
 umount /mnt/sys
 umount /mnt/proc
