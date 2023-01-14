@@ -7,31 +7,19 @@ fi
 
 mount -t proc proc /proc
 
-if [ -b /dev/vdb ] && mount /dev/vdb /mnt; then
-	echo "/dev/vdb mounted."
-	[ -f /mnt/boot/kernel ] && KERNEL=/mnt/boot/kernel
-	[ -f /mnt/boot/vmlinuz ] && KERNEL=/mnt/boot/vmlinuz
-	[ -f /mnt/boot/initramfs ] && INITRD=/mnt/boot/initramfs
-	[ -f /mnt/boot/initrd.img ] && INITRD=/mnt/boot/initrd.img
-	if [ -z "$KERNEL" ]; then
-		if ls /mnt/boot/vmlinuz-* >/dev/null 2>&1 ; then
-			KERNEL=`ls -t1 /mnt/boot/vmlinuz-*|egrep -v '\.old$'|head -1`
-			INITRD=`echo $KERNEL|sed 's/vmlinuz/initramfs/'`.img
-		fi
-	fi
-	if [ -n "$KERNEL" ]; then
-		echo "Kernel found. will run kexec..."
-		[ -n "$INITRD" ] && INITRD_OPT=--initrd=$INITRD
-		kexec -l "$KERNEL" --append="`cat /proc/cmdline | sed 's/\/dev\/vda/\/dev\/vdb/' | sed 's/ ro / rw /'`" $INITRD_OPT
+if [ -b /dev/vdb ] && mount -o ro /dev/vdb /mnt; then
+	if /usr/sbin/kexec-byroot --quiet /mnt; then
+		echo "Booting with new root filesystem on /dev/vdb..."
 		kexec -e
 	fi
-	#else
-	echo "Kernel not found in /dev/vdb. Unmounting."
 	umount /mnt
 fi
 
-if mount -t virtiofs fs /mnt; then
-	echo "virtiofs available.  TODO: find kernel and kexec"
+if mount -t virtiofs -o ro fs /mnt; then
+	if /usr/sbin/kexec-byroot --quiet /mnt; then
+		echo "Booting with new root filesystem on virtiofs..."
+		kexec -e
+	fi
 	umount /mnt
 fi
 
