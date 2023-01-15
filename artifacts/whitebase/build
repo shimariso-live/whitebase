@@ -28,16 +28,6 @@ fi
 make vm
 cp -a vm /usr/bin/
 
-if [ -d /var/cache/repos/wghub ]; then
-        cd /var/cache/repos/wghub
-        git pull
-else
-        git clone  https://github.com/shimarin/wghub.git /var/cache/repos/wghub
-        cd /var/cache/repos/wghub
-fi
-make libwghub.a
-make install
-
 if [ -d /var/cache/repos/wb ]; then
         cd /var/cache/repos/wb
         git pull
@@ -48,17 +38,15 @@ fi
 make wb
 cp -a wb /usr/bin/
 
-
-#/etc/udev/hwdb.bin
-#/usr/bin/cpuid2cpuflags
-#$copy walbrix/arcconf /opt/bin/arcconf
-#$require nut.lst
-#$require omronups.lst
-#$require s3fs.lst
-
-#cd /usr/src/walbrix
-#make
-#make install
+if [ -d /var/cache/repos/wbui ]; then
+        cd /var/cache/repos/wbui
+        git pull
+else
+        git clone https://github.com/wbrxcorp/wbui.git /var/cache/repos/wbui
+        cd /var/cache/repos/wbui
+fi
+make
+cp -a wbui.bin /usr/bin/wbui
 
 mkdir -p /var/vm/\@default
 

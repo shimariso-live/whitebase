@@ -13,6 +13,7 @@ Restart=always
 RestartSec=1
 Environment=XDG_RUNTIME_DIR=/run/user/0
 Environment=WAYLAND_DISPLAY=wayland-1
+Environment=GTK_A11Y=none
 
 [Install]
 WantedBy=graphical.target

@@ -10,7 +10,7 @@ WorkingDirectory=%h
 PAMName=login
 TTYPath=/dev/tty1
 Type=notify
-ExecStart=weston --modules=systemd-notify.so --shell=kiosk-shell.so 
+ExecStart=weston --modules=systemd-notify.so --shell=kiosk-shell.so --current-mode --continue-without-input
 Restart=always
 RestartSec=1
 

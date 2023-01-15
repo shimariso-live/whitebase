@@ -13,16 +13,6 @@ rm -f /boot/initramfs
 
 mkdir -p /var/cache/repos
 
-if [ -d /var/cache/repos/vm ]; then
-	cd /var/cache/repos/vm
-	git pull
-else
-	git clone https://github.com/shimarin/vm.git /var/cache/repos/vm
-	cd /var/cache/repos/vm
-fi
-make vm
-cp -a vm /usr/bin/
-
 if [ -d /var/cache/repos/wghub ]; then
 	cd /var/cache/repos/wghub
 	git pull
@@ -32,14 +22,4 @@ else
 fi
 make libwghub.a
 make install
-
-if [ -d /var/cache/repos/wb ]; then
-	cd /var/cache/repos/wb
-	git pull
-else
-	git clone https://github.com/wbrxcorp/wb.git /var/cache/repos/wb
-	cd /var/cache/repos/wb
-fi
-make wb
-cp -a wb /usr/bin/
 

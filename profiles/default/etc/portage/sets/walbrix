@@ -115,6 +115,8 @@ app-emulation/qemu
 # wb/vm
 media-gfx/qrencode
 dev-cpp/nlohmann_json
+dev-python/python-pam
+dev-python/pygobject
 
 # gtk4
 dev-cpp/gtkmm
