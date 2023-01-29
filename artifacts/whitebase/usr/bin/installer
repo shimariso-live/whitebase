@@ -1,3 +1,0 @@
-#!/bin/sh
-wb install
-exec bash --login
