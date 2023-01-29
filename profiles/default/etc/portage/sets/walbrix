@@ -117,6 +117,7 @@ media-gfx/qrencode
 dev-cpp/nlohmann_json
 dev-python/python-pam
 dev-python/pygobject
+media-fonts/noto-emoji
 
 # gtk4
 dev-cpp/gtkmm
