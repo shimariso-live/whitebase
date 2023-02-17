@@ -164,7 +164,7 @@ def main():
     try:
         kexec_success = False
         # try booting /dev/vdb
-        if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "/dev/vdb", "/mnt"]) == 0:
+        if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "-o", "ro", "/dev/vdb", "/mnt"]) == 0:
             kexec_success = kexec_boot("/mnt")
             if kexec_success: print("Booting with new root filesystem on /dev/vdb...")
         elif subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:
