@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import os,sys,ctypes,ctypes.util,subprocess,pathlib,shutil
+import os,sys,ctypes,ctypes.util,subprocess,pathlib,shutil,glob
 
 # libc functions
 libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
@@ -72,6 +72,88 @@ def read_qemu_fw_cfg(root):
     if os.path.isfile(ssh_host_keys):
         subprocess.call(["/bin/tar", "xf", ssh_host_keys, "-k", "-C", os.path.join(root, "etc/ssh")])
 
+def kexec_boot(root, verbose=False):
+    if not os.path.isdir(root): return False
+
+    fstype = None
+    device = None
+    with open("/proc/mounts") as f:
+        for line in f:
+            if line[0] != '/': continue
+            cols = line.split(' ', 3)
+            if len(cols) < 3 or cols[1] != os.path.realpath(root): continue
+            #else
+            device = cols[0]
+            fstype = cols[2]
+
+    if fstype is None or device is None: 
+        if verbose: print("Could not determine fstype/device")
+        return False
+
+    bootdir = os.path.join(root, "boot")
+    kernel = None
+    initramfs = None
+    for candidate in ["kernel", "vmlinuz"]:
+        if os.path.exists(os.path.join(bootdir, candidate)):
+            kernel = candidate
+            if verbose: print("Kernel found: %s" % kernel)
+            break
+    if kernel is not None:
+        for candidate in ["initramfs", "initrd.img"]:
+            if os.path.exists(os.path.join(bootdir, candidate)):
+                initramfs = candidate
+                if verbose: print("Initramfs found: %s" % initramfs)
+                break
+    if kernel is None:
+        latest = 0
+        for e in glob.glob(os.path.join(bootdir, "vmlinuz-*")):
+            if e.endswith(".old"): continue
+            mtime = os.path.getmtime(e)
+            if mtime < latest: continue
+            kernel = e
+            latest = mtime
+            if verbose: print("Kernel found: %s" % kernel)
+        if kernel is not None:
+            initramfs = os.path.join(bootdir, "initramfs") + os.path.basename(kernel)[7:] + ".img"
+            if not os.path.isfile(initramfs): initramfs = None
+            elif verbose: print("Initramfs found: %s" % initramfs)
+
+    if kernel is None:
+        if verbose: print("Kernel not found")
+        return False
+    with open("/proc/cmdline") as f:
+        cmdline = f.read()
+    if verbose: print("cmdline=%s" % cmdline)
+    cmdline_args = cmdline.split()
+    has_fstab = False
+    fstab = os.path.join(root, "etc/fstab")
+    if os.path.isfile(fstab):
+        with open(fstab) as f:
+            for line in f:
+                cols = line.split('#', 1)[0].split(None, 2)
+                if len(cols) < 2: continue
+                if cols[1] == "/":
+                    has_fstab = True
+                    break
+    if verbose: print("root entry %s in fatsb" % ("found" if has_fstab else "not found"))
+    has_rw = False
+    new_cmdline = ""
+    for arg in cmdline_args:
+        if arg.startswith("root=") or arg.startswith("rootfstype="): continue
+        if not has_fstab and arg == "ro": continue
+        if arg == "rw": has_rw = True
+        if new_cmdline != "": new_cmdline += ' '
+        new_cmdline += arg
+    new_cmdline += " root=" + device + " rootfstype=" + fstype
+    if not has_fstab and not has_rw: new_cmdline += " rw" # always mount root filesystem r/w when fstab is missing
+    if verbose: print("new cmdline=%s" % new_cmdline)
+
+    kexec_cmdline = ["/usr/sbin/kexec", "-l", "--append=" + new_cmdline]
+    if initramfs is not None: kexec_cmdline.append("--initrd=" + initramfs)
+    kexec_cmdline.append(kernel)
+    if verbose: print("kexec cmdline", kexec_cmdline)
+    return subprocess.call(kexec_cmdline) == 0
+
 def main():
     RW="/run/.rw"
     NEWROOT="/run/.newroot"
@@ -79,21 +161,21 @@ def main():
     ensure_dev_mounted()
     ensure_proc_mounted()
 
-    # try booting /dev/vdb
-    if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "/dev/vdb", "/mnt"]) == 0:
-        if subprocess.call(["/usr/sbin/kexec-byroot", "--quiet", "/mnt"]) == 0:
-            print("Booting with new root filesystem on /dev/vdb...")
-            os.execl("/usr/sbin/kexec", "/usr/sbin/kexec", "-e")
-        #else
-        umount("/mnt")
-    
-    # try booting virtiofs root
-    if subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:
-        if subprocess.call(["/usr/sbin/kexec-byroot", "--quiet", "/mnt"]) == 0:
-            print("Booting with new root filesystem on virtiofs...")
-            os.execl("/usr/sbin/kexec", "/usr/sbin/kexec", "-e")
-        #else
+    try:
+        kexec_success = False
+        # try booting /dev/vdb
+        if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "/dev/vdb", "/mnt"]) == 0:
+            kexec_success = kexec_boot("/mnt")
+            if kexec_success: print("Booting with new root filesystem on /dev/vdb...")
+        elif subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:
+            # try booting virtiofs root
+            kexec_success = kexec_boot("/mnt")
+            if kexec_success: print("Booting with new root filesystem on virtiofs...")
+
         umount("mnt")
+        if kexec_success: os.execl("/usr/sbin/kexec", "/usr/sbin/kexec", "-e")
+    except Exception as e:
+        print(e)
 
     ensure_run_mounted()
     ensure_sys_mounted()
