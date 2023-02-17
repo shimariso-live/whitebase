@@ -1,0 +1,130 @@
+#!/usr/bin/python
+import os,sys,ctypes,ctypes.util,subprocess,pathlib,shutil
+
+# libc functions
+libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+libc.reboot.argtypes = (ctypes.c_int,)
+RB_HALT_SYSTEM = 0xcdef0123
+libc.mount.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p)
+MS_MOVE = 0x2000
+MS_RELATIME = (1<<21)
+libc.umount.argtypes = (ctypes.c_char_p,)
+libc.pivot_root.argtypes = (ctypes.c_char_p, ctypes.c_char_p)
+
+def _exception_handler(exctype, value, traceback):
+    print(value)
+    rst = libc.reboot(RB_HALT_SYSTEM)
+
+def ensure_run_mounted():
+    if os.path.ismount("/run"): return
+    if libc.mount(b"tmpfs", b"/run", b"tmpfs", MS_RELATIME, b"") < 0:
+        raise Exception("/run counldn't be mounted")
+
+def ensure_sys_mounted():
+    if os.path.ismount("/sys"): return
+    if libc.mount(b"sysfs", b"/sys", b"sysfs", 0, b"") < 0:
+        raise Exception("/sys counldn't be mounted")
+
+def ensure_proc_mounted():
+    if os.path.ismount("/proc"): return
+    if libc.mount(b"proc", b"/proc", b"proc", 0, b"") < 0:
+        raise Exception("/proc counldn't be mounted")
+
+def ensure_dev_mounted():
+    if os.path.ismount("/dev"): return
+    if libc.mount(b"udev", b"/dev", b"devtmpfs", 0, b"mode=0755,size=10M") < 0:
+        raise Exception("/dev counldn't be mounted")
+
+def mount_tmpfs(target):
+    os.makedirs(target,exist_ok=True)
+    if libc.mount(b"tmpfs", target.encode(), b"tmpfs", MS_RELATIME, b"") < 0:
+        raise Exception("Failed to mount tmpfs on %s." % target)
+
+def mount_overlayfs(lowerdir,upperdir,workdir,target):
+    os.makedirs(upperdir,exist_ok=True)
+    os.makedirs(workdir,exist_ok=True)
+    os.makedirs(target,exist_ok=True)
+    mountopts = "lowerdir=%s,upperdir=%s,workdir=%s" % (lowerdir, upperdir, workdir)
+    if libc.mount(b"overlay", target.encode(), b"overlay", MS_RELATIME, mountopts.encode()) < 0:
+        raise Exception("Overlay filesystem(%s) counldn't be mounted on %s. errno=%d" 
+            % (mountopts,target,ctypes.get_errno()))
+
+def move_mount(old, new):
+    os.makedirs(new,exist_ok=True)
+    if libc.mount(old.encode(), new.encode(), None, MS_MOVE, None) < 0:
+        raise Exception("Moving mount point from %s to %s failed. errno=%d" % (old, new, ctypes.get_errno()))
+
+def umount(mountpoint):
+    return libc.umount(mountpoint.encode())
+
+def pivot_root(new_root, put_old):
+    os.makedirs(put_old,exist_ok=True)
+    if libc.pivot_root(new_root.encode(), put_old.encode()) < 0:
+        raise Exception("pivot_root(%s,%s) failed. errno=%d" % (new_root,put_old,ctypes.get_errno()))
+
+def read_qemu_fw_cfg(root):
+    by_name = os.path.join(root, "sys/firmware/qemu_fw_cfg/by_name")
+    ssh_public_key = os.path.join(by_name, "opt/ssh-public-key/raw")
+    if os.path.isfile(ssh_public_key):
+        shutil.copyfile(ssh_public_key, os.path.join(root, "root/.ssh/authorized_keys"))
+    
+    ssh_host_keys = os.path.join(by_name, "opt/ssh-host-keys/raw")
+    if os.path.isfile(ssh_host_keys):
+        subprocess.call(["/bin/tar", "xf", ssh_host_keys, "-k", "-C", os.path.join(root, "etc/ssh")])
+
+def main():
+    RW="/run/.rw"
+    NEWROOT="/run/.newroot"
+
+    ensure_dev_mounted()
+    ensure_proc_mounted()
+
+    # try booting /dev/vdb
+    if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "/dev/vdb", "/mnt"]) == 0:
+        if subprocess.call(["/usr/sbin/kexec-byroot", "--quiet", "/mnt"]) == 0:
+            print("Booting with new root filesystem on /dev/vdb...")
+            os.execl("/usr/sbin/kexec", "/usr/sbin/kexec", "-e")
+        #else
+        umount("/mnt")
+    
+    # try booting virtiofs root
+    if subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:
+        if subprocess.call(["/usr/sbin/kexec-byroot", "--quiet", "/mnt"]) == 0:
+            print("Booting with new root filesystem on virtiofs...")
+            os.execl("/usr/sbin/kexec", "/usr/sbin/kexec", "-e")
+        #else
+        umount("mnt")
+
+    ensure_run_mounted()
+    ensure_sys_mounted()
+
+    mount_tmpfs(RW)
+    os.mkdir(NEWROOT)
+    mount_overlayfs("/", os.path.join(RW, "root"), os.path.join(RW, "work"), NEWROOT)
+    print("Root filesystem mounted.")
+
+    new_run = os.path.join(NEWROOT, "run")
+    mount_tmpfs(new_run)
+    move_mount(RW, os.path.join(new_run, "initramfs/rw"))
+
+    move_mount("/dev", os.path.join(NEWROOT, "dev"))
+    move_mount("/sys", os.path.join(NEWROOT, "sys"))
+    move_mount("/proc", os.path.join(NEWROOT, "proc"))
+
+    try:
+        read_qemu_fw_cfg(NEWROOT)
+    except Exception as e:
+        print("read_qemu_fw_cfg: %s" % e)
+
+    print("Starting actual /sbin/init...")
+    os.chdir(NEWROOT)
+    pivot_root(".", "run/initramfs/ro")
+    os.chroot(".")
+    umount("/run/initramfs/ro/run")
+    os.execl("/sbin/init", "/sbin/init")
+
+if __name__ == "__main__":
+    if os.getpid() != 1: raise Exception("PID must be 1")
+    sys.excepthook = _exception_handler
+    main()
+

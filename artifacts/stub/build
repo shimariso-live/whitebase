@@ -1,22 +1,7 @@
 #!/bin/sh
 set -e
 
-recursive_touch() {
-        if [ -L $1 ]; then
-                TARGET=`readlink $1`
-                if [ "${TARGET:0:1}" = "/" ]; then
-                        ABS_TARGET=$TARGET
-                else
-                        ABS_TARGET=`dirname $1`/$TARGET
-                fi
-                recursive_touch "$ABS_TARGET"
-        fi
-        touch -h $1
-}
-
-touch /linuxrc
-recursive_touch /bin/gunzip
-recursive_touch /usr/bin/ar
+recursive-touch /bin/gunzip /usr/bin/ar
 
 # llmnrd
 mkdir -p /tmp/llmnrd
