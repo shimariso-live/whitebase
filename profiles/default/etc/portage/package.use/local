@@ -84,3 +84,5 @@ sys-libs/ldb -ldap
 
 # wb
 dev-libs/poco -mongodb
+
+*/* PYTHON_TARGETS: -python3_11 python3_10
