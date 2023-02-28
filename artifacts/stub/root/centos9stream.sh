@@ -13,8 +13,9 @@ mount -o bind /dev /mnt/dev
 
 mkdir -p /mnt/etc/dracut.conf.d
 echo 'add_drivers+=" virtiofs "' > /mnt/etc/dracut.conf.d/virtiofs.conf
+echo -e 'add_dracutmodules+=" crypt "\nadd_drivers+=" dm-crypt dm-mod "' > /mnt/etc/dracut.conf.d/crypt.conf
 
-rpmbootstrap $BASE_URL /mnt "dnf" "passwd" "vim-minimal" "strace" "less" "policycoreutils" "grubby" "kernel" "tar" "openssh-server" "openssh-clients" "avahi" "NetworkManager" "iproute" "iputils"
+rpmbootstrap $BASE_URL /mnt "dnf" "passwd" "vim-minimal" "strace" "less" "policycoreutils" "grubby" "kernel" "tar" "openssh-server" "openssh-clients" "avahi" "NetworkManager" "iproute" "iputils" "mdadm"
 
 echo -e 'DEVICE="eth0"\nBOOTPROTO=dhcp\nONBOOT=yes\nTYPE="Ethernet"' > /mnt/etc/sysconfig/network-scripts/ifcfg-eth0
 echo -e 'search local\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4860:4860::8888\nnameserver 2001:4860:4860::8844' > /mnt/etc/resolv.conf

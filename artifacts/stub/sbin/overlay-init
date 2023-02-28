@@ -72,22 +72,39 @@ def read_qemu_fw_cfg(root):
     if os.path.isfile(ssh_host_keys):
         subprocess.call(["/bin/tar", "xf", ssh_host_keys, "-k", "-C", os.path.join(root, "etc/ssh")])
 
-def kexec_boot(root, verbose=False):
+def get_fstype(device):
+    with subprocess.Popen(["/sbin/blkid","-s","TYPE","-o","value",device],stdout=subprocess.PIPE, stderr=subprocess.PIPE) as blkid:
+        output, error = blkid.communicate()
+        exit_code = blkid.returncode
+    if exit_code != 0:
+        print("Determining filesystem type failed: %s" % error.decode().strip())
+        return None
+    #else
+    return output.decode().strip()
+
+def get_luks_uuid(device):
+    with subprocess.Popen(["/sbin/cryptsetup","luksUUID", device],stdout=subprocess.PIPE, stderr=subprocess.PIPE) as cryptsetup:
+        output, error = cryptsetup.communicate()
+        exit_code = cryptsetup.returncode
+    if exit_code != 0:
+        return None
+    #else
+    return output.decode().strip()
+
+def kexec_boot(root, root_device_for_new_kernel, verbose=False):
     if not os.path.isdir(root): return False
 
     fstype = None
-    device = None
     with open("/proc/mounts") as f:
         for line in f:
             if line[0] != '/': continue
             cols = line.split(' ', 3)
             if len(cols) < 3 or cols[1] != os.path.realpath(root): continue
             #else
-            device = cols[0]
             fstype = cols[2]
 
-    if fstype is None or device is None: 
-        if verbose: print("Could not determine fstype/device")
+    if fstype is None: 
+        if verbose: print("Could not determine device/fstype")
         return False
 
     bootdir = os.path.join(root, "boot")
@@ -144,25 +161,26 @@ def kexec_boot(root, verbose=False):
         if arg == "rw": has_rw = True
         if new_cmdline != "": new_cmdline += ' '
         new_cmdline += arg
-    new_cmdline += " root=" + device + " rootfstype=" + fstype
+    luks_uuid = get_luks_uuid(root_device_for_new_kernel)
+
+    # https://www.freedesktop.org/software/systemd/man/systemd-cryptsetup-generator.html
+    if luks_uuid is not None:
+        new_cmdline += " rd.luks.uuid=luks-" + luks_uuid + " rd.luks.name=" + luks_uuid + "=luks-" + luks_uuid
+        root_device_for_new_kernel = "/dev/mapper/luks-" + luks_uuid
+
+    new_cmdline += " root=" + root_device_for_new_kernel + " rootfstype=" + fstype
     if not has_fstab and not has_rw: new_cmdline += " rw" # always mount root filesystem r/w when fstab is missing
     if verbose: print("new cmdline=%s" % new_cmdline)
 
     kexec_cmdline = ["/usr/sbin/kexec", "-l", "--append=" + new_cmdline]
     if initramfs is not None: kexec_cmdline.append("--initrd=" + initramfs)
     kexec_cmdline.append(kernel)
+
     if verbose: print("kexec cmdline", kexec_cmdline)
     return subprocess.call(kexec_cmdline) == 0
 
 def determine_device_to_mount(device_to_try):
-    with subprocess.Popen(["/sbin/blkid","-s","TYPE","-o","value",device_to_try],stdout=subprocess.PIPE, stderr=subprocess.PIPE) as blkid:
-        output, error = blkid.communicate()
-        exit_code = blkid.returncode
-    if exit_code != 0:
-        print("Determining filesystem type failed: %s" % error.decode().strip())
-        return None
-    #else
-    fstype = output.decode().strip()
+    fstype = get_fstype(device_to_try)
     print("Filesystem type = %s" % fstype)
     if fstype == "crypto_LUKS":
         ensure_run_mounted() # cryptsetup needs /run to place lock files
@@ -170,26 +188,27 @@ def determine_device_to_mount(device_to_try):
             device_to_try = "/dev/mapper/data"
         else: 
             device_to_try = None
-            subprocess.call("bash")
 
     return device_to_try
 
 def main():
     RW="/run/.rw"
     NEWROOT="/run/.newroot"
+    DATA="/dev/vdb"
+    FS="fs"
 
     ensure_dev_mounted()
     ensure_proc_mounted()
 
     try:
         kexec_success = False
-        device_to_mount = determine_device_to_mount("/dev/vdb")
+        device_to_mount = determine_device_to_mount(DATA)
         if device_to_mount is not None and subprocess.call(["mount", "-o", "ro", device_to_mount, "/mnt"]) == 0:
-            kexec_success = kexec_boot("/mnt")
+            kexec_success = kexec_boot("/mnt", DATA)
             if kexec_success: print("Booting with new root filesystem on /dev/vdb...")
-        elif subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:
+        elif subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", FS, "mnt"]) == 0:
             # try booting virtiofs root
-            kexec_success = kexec_boot("/mnt")
+            kexec_success = kexec_boot("/mnt", FS)
             if kexec_success: print("Booting with new root filesystem on virtiofs...")
 
         umount("mnt")
