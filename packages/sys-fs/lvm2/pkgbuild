@@ -1,5 +1,0 @@
-#!/bin/sh
-set -e
-sed -i 's/snapshot_autoextend_threshold = 100/snapshot_autoextend_threshold = 80/' /etc/lvm/lvm.conf
-sed -i 's/use_lvmetad = 0/use_lvmetad = 1/' /etc/lvm/lvm.conf
-
