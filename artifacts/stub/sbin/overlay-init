@@ -154,6 +154,26 @@ def kexec_boot(root, verbose=False):
     if verbose: print("kexec cmdline", kexec_cmdline)
     return subprocess.call(kexec_cmdline) == 0
 
+def determine_device_to_mount(device_to_try):
+    with subprocess.Popen(["/sbin/blkid","-s","TYPE","-o","value",device_to_try],stdout=subprocess.PIPE, stderr=subprocess.PIPE) as blkid:
+        output, error = blkid.communicate()
+        exit_code = blkid.returncode
+    if exit_code != 0:
+        print("Determining filesystem type failed: %s" % error.decode().strip())
+        return None
+    #else
+    fstype = output.decode().strip()
+    print("Filesystem type = %s" % fstype)
+    if fstype == "crypto_LUKS":
+        ensure_run_mounted() # cryptsetup needs /run to place lock files
+        if subprocess.call(["/sbin/cryptsetup","open", device_to_try,"data"]) == 0:
+            device_to_try = "/dev/mapper/data"
+        else: 
+            device_to_try = None
+            subprocess.call("bash")
+
+    return device_to_try
+
 def main():
     RW="/run/.rw"
     NEWROOT="/run/.newroot"
@@ -163,8 +183,8 @@ def main():
 
     try:
         kexec_success = False
-        # try booting /dev/vdb
-        if pathlib.Path("/dev/vdb").is_block_device() and subprocess.call(["mount", "-o", "ro", "/dev/vdb", "/mnt"]) == 0:
+        device_to_mount = determine_device_to_mount("/dev/vdb")
+        if device_to_mount is not None and subprocess.call(["mount", "-o", "ro", device_to_mount, "/mnt"]) == 0:
             kexec_success = kexec_boot("/mnt")
             if kexec_success: print("Booting with new root filesystem on /dev/vdb...")
         elif subprocess.call(["mount", "-t", "virtiofs", "-o", "ro", "fs", "mnt"]) == 0:

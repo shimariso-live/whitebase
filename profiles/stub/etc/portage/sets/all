@@ -10,3 +10,4 @@ dev-cpp/argparse # for rpmbootstrap
 sys-fs/btrfs-progs
 sys-fs/xfsprogs
 dev-libs/iniparser
+sys-fs/cryptsetup
