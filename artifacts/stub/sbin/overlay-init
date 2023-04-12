@@ -111,14 +111,16 @@ def kexec_boot(root, root_device_for_new_kernel, verbose=False):
     kernel = None
     initramfs = None
     for candidate in ["kernel", "vmlinuz"]:
-        if os.path.exists(os.path.join(bootdir, candidate)):
-            kernel = candidate
+        path = os.path.join(bootdir, candidate)
+        if os.path.exists(path):
+            kernel = path
             if verbose: print("Kernel found: %s" % kernel)
             break
     if kernel is not None:
         for candidate in ["initramfs", "initrd.img"]:
-            if os.path.exists(os.path.join(bootdir, candidate)):
-                initramfs = candidate
+            path = os.path.join(bootdir, candidate)
+            if os.path.exists(path):
+                initramfs = path
                 if verbose: print("Initramfs found: %s" % initramfs)
                 break
     if kernel is None:
