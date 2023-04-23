@@ -90,6 +90,7 @@ net-misc/dropbear
 #sys-block/megacli # incompatible with arm
 app-backup/rdiff-backup
 app-backup/btrbk
+sys-boot/mokutil
 
 # sys-power/nut  # because of old libusb
 net-wireless/bluez
@@ -111,6 +112,7 @@ app-admin/logrotate
 #app-arch/rpm
 #dev-util/debootstrap
 app-emulation/qemu
+app-emulation/virtiofsd
 
 # wb/vm
 media-gfx/qrencode

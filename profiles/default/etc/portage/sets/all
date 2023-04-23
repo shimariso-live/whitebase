@@ -1,6 +1,7 @@
 @walbrix
 @genpack-install
-@debug
+sys-boot/shim
+app-crypt/sbsigntools
 # app-emulation/xen-tools # suspended because missing dependency harms
 
 # stubvm
