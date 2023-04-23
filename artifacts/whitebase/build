@@ -14,7 +14,7 @@ sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.targ
 
 g++ -std=c++2a -o /usr/sbin/genpack-install /usr/src/genpack-install.cpp -lmount -lblkid
 
-touch /usr/sbin/do-with-lvm-snapshot
+recursive-touch /usr/share/shim/BOOTX64.EFI /usr/sbin/do-with-lvm-snapshot
 
 mkdir -p /var/cache/repos
 
@@ -50,4 +50,4 @@ cp -a wbui.bin /usr/bin/wbui
 
 mkdir -p /var/vm/\@default
 
-systemctl enable scan-volumes generate-wg-walbrix-key notify-status display-manager wbui installer.service
+systemctl enable fstrim.timer scan-volumes generate-wg-walbrix-key notify-status display-manager wbui installer.service
