@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+DONE_FILE=/var/log/backup.done
+LOGFILE=/var/log/backup.log
+
+tty -s || exec >$LOGFILE 2>&1
+
+rm -f $DONE_FILE
+
+for i in `wb volume list -on`; do
+	echo "Optimizing volume $i ...."
+	wb volume optimize $i || echo " Volume optimization by 'btrfs filesystem defrag -r' failed."
+        SNAPSHOT=`wb volume snapshot $i`
+        if [ -x $SNAPSHOT/backup ]; then
+		echo "Executing backup script $SNAPSHOT/backup ..."
+                $SNAPSHOT/backup || DONE_FILE=/dev/null
+        fi
+done
+
+date > $DONE_FILE
+
+echo "$0 done."

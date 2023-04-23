@@ -8,9 +8,12 @@ net-analyzer/snort
 sys-process/cronie
 app-emulation/xen-tools
 app-emulation/qemu
+app-emulation/virtiofsd
 sys-firmware/edk2-ovmf-bin
 sys-firmware/seabios-bin
 dev-util/gdbus-codegen
+sys-boot/mokutil
+sys-fs/squashfs-tools # aims 4.6.1
 
 # ui
 dev-cpp/argparse
