@@ -29,7 +29,6 @@ dev-python/zeroconf
 
 dev-python/pyasn1
 dev-python/asn1crypto
-dev-python/ndg-httpsclient
 dev-python/py
 dev-python/requests
 
