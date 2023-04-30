@@ -54,12 +54,17 @@ dev-ruby/arel
 dev-ruby/globalid
 =dev-ruby/mail-2.7.1
 =dev-ruby/websocket-driver-0.7.5
-=dev-ruby/websocket-extensions-0.1.5
+dev-ruby/websocket-extensions
 =dev-ruby/mysql2-0.5.3
 =dev-ruby/rmagick-4.1.2
 =dev-ruby/method_source-1.0.0
 =www-apache/passenger-6.0.7
 dev-ruby/regexp_parser
+dev-ruby/ast
+dev-ruby/mini_magick
+dev-ruby/request_store
+dev-ruby/simplecov
+dev-ruby/unicode-display_width
 
 #redmine
 =dev-ruby/public_suffix-4.0.6
@@ -77,6 +82,7 @@ dev-ruby/rbpdf-font
 dev-ruby/roadie
 dev-ruby/roadie-rails
 =dev-ruby/simplecov-html-0.12.3
+dev-ruby/simplecov_json_formatter
 =dev-ruby/yard-0.9.26
 =dev-ruby/selenium-webdriver-3.142.7
 =dev-ruby/ruby-progressbar-1.11.0
