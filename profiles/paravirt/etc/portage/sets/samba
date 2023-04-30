@@ -1,3 +1,5 @@
+@paravirt
+@common
 net-fs/samba
 dev-python/xxhash
 app-misc/fdupes
@@ -6,3 +8,5 @@ www-servers/nginx
 dev-libs/yajl # mod_security needs yajl
 dev-python/python-magic
 app-misc/screen
+net-analyzer/zabbix
+net-misc/rclone
