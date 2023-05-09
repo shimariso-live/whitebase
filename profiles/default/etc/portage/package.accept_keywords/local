@@ -3,21 +3,14 @@ sys-kernel/linux-firmware
 sys-apps/hwids
 net-misc/usbip
 net-misc/modemmanager
-sys-fs/bcache-tools
 net-analyzer/snort
-sys-process/cronie
-app-emulation/xen-tools
 app-emulation/qemu
 app-emulation/virtiofsd
-sys-firmware/edk2-ovmf-bin
-sys-firmware/seabios-bin
-dev-util/gdbus-codegen
 sys-boot/mokutil
 sys-fs/squashfs-tools # aims 4.6.1
 
 # ui
 dev-cpp/argparse
-media-libs/libepoxy # for https://github.com/anholt/libepoxy/pull/238/commits/dbfa4b209c0712b67dfeb8366c2ebe8503063b52
 x11-themes/adwaita-icon-theme
 gui-libs/gtk
 dev-cpp/gtkmm
@@ -31,11 +24,8 @@ dev-libs/wayland-protocol
 dev-cpp/picojson
 
 # rescue
-app-crypt/gcr
-media-libs/libglvnd
 net-misc/eventd
 
 # misc
 net-fs/ksmbd-tools
 dev-util/debootstrap
-dev-python/nuitka
