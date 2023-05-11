@@ -27,7 +27,7 @@ void init::hooks::post_init(const std::filesystem::path& newroot,
 	if (!data_partition) return;
 	const auto data_partition_dev_path = std::get<0>(data_partition.value());
 	const auto vm_default = newroot / "var/vm/@default";
-	if (!init::lib::is_dir(vm_default) || init::lib::mount(data_partition_dev_path, vm_default, "btrfs", MS_RELATIME, "subvol=vm") != 0) {
+	if (!init::lib::is_dir(vm_default) || init::lib::mount(data_partition_dev_path, vm_default, "btrfs", MS_NOATIME, "subvol=vm") != 0) {
 		std::cout << "Default VM subvolume couldn't be mounted." << std::endl;
 	}
 }
