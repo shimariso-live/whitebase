@@ -6,13 +6,11 @@ LOGFILE=/var/log/backup.log
 
 tty -s || exec >$LOGFILE 2>&1
 
-rm -f $DONE_FILE
-
 for i in `wb volume list -on`; do
         SNAPSHOT=`wb volume snapshot $i`
-        if [ -f -x $SNAPSHOT/~backup ]; then
+        if [ -x $SNAPSHOT/~backup ]; then
 		echo "Executing backup script $SNAPSHOT/~backup ..."
-                $SNAPSHOT/~backup || DONE_FILE=/dev/null
+                $SNAPSHOT/~backup $i || DONE_FILE=/dev/null
         fi
 done
 
