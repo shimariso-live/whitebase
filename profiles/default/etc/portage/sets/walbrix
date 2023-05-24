@@ -91,8 +91,9 @@ net-misc/dropbear
 app-backup/rdiff-backup
 app-backup/btrbk
 sys-boot/mokutil
+net-misc/rclone
 
-# sys-power/nut  # because of old libusb
+sys-power/nut
 net-wireless/bluez
 sys-firmware/bluez-firmware
 dev-util/cmake # for ESP-IDF

@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+UDEV_RULES=/lib/udev/rules.d/62-nut-usbups.rules
+[ -f "$UDEV_RULES" ]
+sed -i 's/^LABEL="nut-usbups_rules_end"$/# omron UPS BY35S - blazer_usb/' "$UDEV_RULES"
+echo 'ATTR{idVendor}=="0590", ATTR{idProduct}=="0080", MODE="664", GROUP="nut"' >> $UDEV_RULES
+echo -e '\nLABEL="nut-usbups_rules_end"' >> $UDEV_RULES
