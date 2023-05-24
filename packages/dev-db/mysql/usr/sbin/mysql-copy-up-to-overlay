@@ -1,8 +1,0 @@
-#!/bin/sh
-mountpoint -q /var/lib/mysql && exit 0
-[ -f /var/log/mysql/mysqld.err ] && exit 0
-#else
-echo "Copying up MySQL data files to overlay..."
-mv /var/lib/mysql /var/lib/mysql.tmp && mv /var/lib/mysql.tmp /var/lib/mysql
-
-# check getfattr -n 'trusted.overlay.opaque' /the/upper/layer/path/to/var/lib/mysql
