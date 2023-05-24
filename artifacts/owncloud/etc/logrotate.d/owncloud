@@ -1,0 +1,8 @@
+/var/www/localhost/htdocs/data/owncloud.log {
+	su apache apache
+        compress
+        delaycompress
+        notifempty
+        missingok
+}
+

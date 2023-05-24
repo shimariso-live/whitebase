@@ -1,3 +1,5 @@
+@paravirt
+@common
 dev-lang/php
 dev-db/mysql
 mail-mta/postfix

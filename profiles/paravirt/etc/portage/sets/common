@@ -1,4 +1,5 @@
 app-emulation/qemu-guest-agent
+sys-process/numactl # for qemu-guest-agent
 sys-libs/liburing # for qemu-guest-agent
 net-vpn/wireguard-tools
 sys-process/cronie

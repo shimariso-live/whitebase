@@ -29,7 +29,7 @@ sed -i 's/^;default_charset.\+$/default_charset="UTF-8"/' /etc/php/*/php.ini
 gcc -o /usr/sbin/occ /usr/src/occ/occ.c
 
 # libsmbclient-php
-download https://pecl.php.net/get/smbclient-1.0.6.tgz > /tmp/smbclient.tgz
+download https://pecl.php.net/get/smbclient-1.1.1.tgz > /tmp/smbclient.tgz
 pecl install /tmp/smbclient.tgz
 
 PHP_CLI_DIR=/etc/php/cli-`eselect php show cli`
@@ -42,3 +42,4 @@ ln -s ../ext/smbclient.ini $PHP_CLI_DIR/ext-active/smbclient.ini
 ln -s ../ext/smbclient.ini $PHP_APACHE2_DIR/ext-active/smbclient.ini
 
 echo "$SMBCLIENT_URL" > /.genpack/php-smbclient-url
+
