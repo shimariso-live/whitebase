@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@redmine","@common"],
+	"packages":["@redmine"],
 	"services":["mysqld","postfix","apache2"]
 }

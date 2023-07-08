@@ -1,6 +1,10 @@
-<dev-lang/python-3.10
-<dev-lang/ruby-3.0
->=dev-lang/ruby-3.1
+# remove python versions other than the default(check portage/profiles/base/make.defaults)
+>=dev-lang/python-3.12
+<dev-lang/python-3.11
+
+>=dev-lang/ruby-3.2
+<dev-lang/ruby-3.1
+
 dev-ruby/railties # should be installed by gem/bundler
 <dev-ruby/public_suffix-4
 >=dev-db/mysql-8

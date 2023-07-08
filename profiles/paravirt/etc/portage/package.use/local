@@ -34,11 +34,6 @@ app-emulation/xen-tools -hvm -ipxe -pam -qemu -qemu-traditional -rombios
 net-analyzer/fping suid
 
 app-eselect/eselect-php fpm apache2
-dev-php/pecl-redis -php_targets_php7-3 -php_targets_php8-0
-dev-php/pecl-imagick -php_targets_php7-3 -php_targets_php8-0
-dev-php/pecl-apcu -targets_php7-3 -php_targets_php8-0
-dev-php/pecl-zmq -targets_php7-3 -php_targets_php8-0
-dev-php/xdebug -php_targets_php7-3 -php_targets_php8-0
 virtual/imagemagick-tools jpeg tiff
 media-gfx/imagemagick -openmp postscript jpeg png svg xml tiff truetype webp # pecl-imagick hates openmp
 www-servers/apache apache2_modules_http2 apache2_modules_proxy apache2_modules_proxy_connect apache2_modules_proxy_http apache2_modules_proxy_ajp apache2_modules_remoteip
@@ -122,3 +117,9 @@ media-libs/libglvnd X
 # Arduino
 dev-util/astyle java
 
+# Restrict python versions
+*/* PYTHON_TARGETS: -python3_12 python3_11 -python3_10
+*/* PYTHON_SINGLE_TARGET: -python3_12 python3_11 -python3_10
+
+# Restrict PHP version
+*/* PHP_TARGETS: -php8-0 -php8-1 -php8-2 php7-4

@@ -1,3 +1,5 @@
+@common
+@paravirt
 dev-db/mysql
 mail-mta/postfix
 net-fs/samba
