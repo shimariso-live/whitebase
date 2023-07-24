@@ -4,3 +4,5 @@ sys-libs/liburing # for qemu-guest-agent
 net-vpn/wireguard-tools
 sys-process/cronie
 app-editors/vim
+sys-fs/btrfs-progs
+sys-fs/xfsprogs

@@ -1,2 +1,6 @@
+@common
+@paravirt
 app-containers/docker
 app-containers/docker-compose
+www-servers/nginx
+sys-apps/yarn
