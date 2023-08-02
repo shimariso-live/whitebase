@@ -3,6 +3,9 @@ sys-kernel/linux-firmware
 sys-apps/hwids
 net-misc/usbip
 net-misc/modemmanager
+net-libs/libmbim
+net-libs/libqmi
+dev-util/gdbus-codegen
 net-analyzer/snort
 app-emulation/qemu
 app-emulation/virtiofsd
