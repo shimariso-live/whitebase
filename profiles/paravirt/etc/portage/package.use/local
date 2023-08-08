@@ -6,6 +6,7 @@ app-admin/sudo -sendmail
 app-editors/vim minimal
 sys-apps/systemd policykit # policykit is required by firewalld
 sys-boot/grub -fonts -nls -themes -grub_platforms_efi-64 -grub_platforms_pc grub_platforms_xen grub_platforms_xen-32
+app-crypt/libb2 -openmp # not to depend on gcc
 
 # motion
 media-video/motion ffmpeg v4l webp
