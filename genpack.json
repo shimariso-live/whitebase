@@ -1,0 +1,4 @@
+{
+	"profiles":["default","paravirt","stub"],
+	"artifacts":["whitebase","stub","samba"]
+}
