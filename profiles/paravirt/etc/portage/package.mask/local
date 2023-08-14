@@ -8,8 +8,8 @@
 dev-ruby/railties # should be installed by gem/bundler
 <dev-ruby/public_suffix-4
 >=dev-db/mysql-8
->=dev-lang/php-8
-<dev-lang/php-7.4
+>=dev-lang/php-8.2
+<dev-lang/php-8.1
 >=dev-lang/lua-5.3
 >=dev-util/ragel-7
 #>=dev-libs/protobuf-3.19 # for mozc

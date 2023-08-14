@@ -124,4 +124,4 @@ dev-util/astyle java
 */* PYTHON_SINGLE_TARGET: -python3_12 python3_11 -python3_10
 
 # Restrict PHP version
-*/* PHP_TARGETS: -php8-0 -php8-1 -php8-2 php7-4
+*/* PHP_TARGETS: -php8-0 php8-1 -php8-2 -php7-4
