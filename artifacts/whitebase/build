@@ -12,9 +12,7 @@ sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.targ
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/openvpn-client@.service
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/zabbix-agentd.service
 
-g++ -std=c++2a -o /usr/sbin/genpack-install /usr/src/genpack-install.cpp -lmount -lblkid
-
-recursive-touch /usr/share/shim/BOOTX64.EFI /usr/sbin/do-with-lvm-snapshot
+recursive-touch /usr/share/shim/BOOTX64.EFI /usr/bin/do-with-lvm-snapshot /usr/bin/genpack-install
 
 mkdir -p /var/cache/repos
 
