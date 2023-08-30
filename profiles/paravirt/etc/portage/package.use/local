@@ -100,21 +100,22 @@ dev-java/openjdk-bin headless-awt
 dev-java/ant -log4j # to exclude lz4-java
 
 # GUI
-dev-libs/weston -X rdp editor xwayland
+dev-libs/weston -X rdp editor -xwayland
+media-libs/libepoxy -X
 gnome-extra/sushi wayland
-app-i18n/fcitx -gtk2 -xkb -cairo -pango
+app-i18n/fcitx -gtk2 -gtk3 -xkb -cairo -pango -X
 app-i18n/mozc -emacs fcitx4 -gui -renderer -handwriting-tegaki
 media-libs/gst-plugins-base wayland -opengl
 net-libs/webkit-gtk wayland -opengl gles2-only -geolocation
 media-libs/gst-plugins-base gles2
 dev-qt/qtgui wayland eglfs egl
-x11-libs/gtk+ wayland
+x11-libs/gtk+ wayland -X
 app-crypt/gcr gtk
 app-crypt/pinentry gnome-keyring
 dev-libs/libxml2 icu
 media-libs/harfbuzz icu
-x11-libs/cairo X
-media-libs/libglvnd X
+x11-libs/cairo -X
+media-libs/libglvnd -X
 
 # Arduino
 dev-util/astyle java
