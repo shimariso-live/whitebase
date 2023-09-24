@@ -10,7 +10,7 @@ EOS
 with-mysql 'mysql -u root < /tmp/sql'
 
 mkdir /var/lib/nextcloud
-chown -R apache.apache /var/lib/nextcloud
+chown -R apache:apache /var/lib/nextcloud
 
 sed -i 's/^upload_max_filesize.\+$/upload_max_filesize = 512M/' /etc/php/*/php.ini
 sed -i 's/^post_max_size.\+$/post_max_size = 768M/' /etc/php/*/php.ini

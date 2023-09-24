@@ -4,7 +4,7 @@ set -e
 echo "Extrtacting Nextcloud..."
 download https://download.nextcloud.com/server/releases/latest-27.tar.bz2 | tar jxf - --strip-components=1 -C /var/www/localhost/htdocs
 
-chown -R apache.apache /var/lib/nextcloud
+chown -R apache:apache /var/www/localhost
 
 mkdir -p /.genpack
 php -r 'include "/var/www/localhost/htdocs/version.php";echo $OC_VersionString;' > /.genpack/nextcloud-version
