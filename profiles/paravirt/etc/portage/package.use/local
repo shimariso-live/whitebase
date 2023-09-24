@@ -70,7 +70,7 @@ app-text/xmlto text
 media-libs/tiff jpeg webp
 media-libs/lcms jpeg
 x11-libs/gdk-pixbuf jpeg
-media-libs/mesa -classic -dri3 gallium gles2 wayland osmesa -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi
+media-libs/mesa -X -classic -dri3 gallium gles2 wayland osmesa -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi
 net-print/cups-filters -postscript -foomatic pdf jpeg png
 app-text/poppler cjk png tiff cairo
 x11-base/xorg-drivers -video_cards_amdgpu dummy fbdev -video_cards_intel -video_cards_nouveau -video_cards_radeon -video_cards_radeonsi -video_cards_vesa
