@@ -1,0 +1,39 @@
+#!/bin/sh
+set -e
+
+cat << 'EOS' > /tmp/sql
+create database `nextcloud`;
+create user `nextcloud`@localhost;
+grant all privileges on `nextcloud`.* to `nextcloud`@localhost;
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
+mkdir /var/lib/nextcloud
+chown -R apache.apache /var/lib/nextcloud
+
+sed -i 's/^upload_max_filesize.\+$/upload_max_filesize = 512M/' /etc/php/*/php.ini
+sed -i 's/^post_max_size.\+$/post_max_size = 768M/' /etc/php/*/php.ini
+sed -i 's/^memory_limit.\+$/memory_limit=512M/' /etc/php/*/php.ini
+sed -i 's/^;mbstring.func_overload.\+$/mbstring.func_overload=0/' /etc/php/*/php.ini
+sed -i 's/^;always_populate_raw_post_data.\+$/always_populate_raw_post_data=-1/' /etc/php/*/php.ini
+sed -i 's/^;default_charset.\+$/default_charset="UTF-8"/' /etc/php/*/php.ini
+
+# occ command
+gcc -o /usr/bin/occ /usr/src/occ/occ.c
+
+# libsmbclient-php
+download https://pecl.php.net/get/smbclient-1.1.1.tgz > /tmp/smbclient.tgz
+pecl install /tmp/smbclient.tgz
+
+PHP_CLI_DIR=/etc/php/cli-`eselect php show cli`
+PHP_APACHE2_DIR=/etc/php/apache2-`eselect php show apache2`
+
+echo "extension=smbclient.so" > $PHP_CLI_DIR/ext/smbclient.ini
+echo "extension=smbclient.so" > $PHP_APACHE2_DIR/ext/smbclient.ini
+
+ln -s ../ext/smbclient.ini $PHP_CLI_DIR/ext-active/smbclient.ini
+ln -s ../ext/smbclient.ini $PHP_APACHE2_DIR/ext-active/smbclient.ini
+
+mkdir -p /.genpack
+echo "$SMBCLIENT_URL" > /.genpack/php-smbclient-url
