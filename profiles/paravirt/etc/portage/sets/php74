@@ -1,0 +1,7 @@
+app-arch/rpm2targz
+dev-libs/libedit
+media-gfx/libimagequant
+x11-libs/libXpm
+media-libs/tiff-compat
+media-libs/libavif
+

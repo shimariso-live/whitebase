@@ -12,5 +12,4 @@ dev-ruby/railties # should be installed by gem/bundler
 <dev-lang/php-8.1
 >=dev-lang/lua-5.3
 >=dev-util/ragel-7
-#>=dev-libs/protobuf-3.19 # for mozc
-#>=dev-python/protobuf-python-3.19
+>=sys-auth/sssd-2.9 # latest sssd requests openldap[experimental]

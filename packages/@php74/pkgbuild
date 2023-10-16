@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+PHP_VER=7.4.33-8
+ARCH=`uname -m`
+for i in php php-common php-intl php-pdo php-mysqlnd php-gd php-json php-xml php-mbstring php-fpm php-cli; do
+        download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php74-$i-7.4.33-8.el9.remi.$ARCH.rpm > /tmp/php-$i.rpm
+done
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php74-php-process-7.4.33-8.el9.remi.$ARCH.rpm > /tmp/php-process.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php74-php-smbclient-1.1.1-1.el9.remi.$ARCH.rpm > /tmp/smbclient.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php74-php-pecl-zip-1.22.2-1.el9.remi.$ARCH.rpm > /tmp/pecl-zip.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/oniguruma5php-6.9.8-1.el9.remi.$ARCH.rpm > /tmp/oniguruma.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/gd3php-2.3.3-9.el9.remi.$ARCH.rpm > /tmp/gd.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/libicu72-72.1-1.el9.remi.$ARCH.rpm > /tmp/libicu.rpm
+download http://ftp.riken.jp/Linux/fedora/epel/9/Everything/$ARCH/Packages/l/libraqm-0.8.0-1.el9.$ARCH.rpm > /tmp/libraqm.rpm
+
+ls -l /tmp/*.rpm
+
+for i in /tmp/*.rpm; do
+        rpm2targz -O $i | tar zxvf - -C /
+done

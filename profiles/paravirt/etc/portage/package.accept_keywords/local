@@ -1,16 +1,7 @@
 sys-kernel/gentoo-sources
 =net-misc/ndppd-0.2.5
-=dev-python/zeroconf-0.24.4
-=dev-python/ifaddr-0.1.6
-=dev-python/ndg-httpsclient-0.4.2-r1
-=net-vpn/wireguard-tools-1.0.20200513
-=dev-python/matplotlib-2.2.4
-dev-python/xxhash
-=media-video/motion-4.3.1
 net-analyzer/snort
-=net-analyzer/barnyard2-1.13
-=net-firewall/firewalld-0.7.3-r1
-=app-arch/rpm-4.16.0
+=app-i18n/mozc-2.28.5029.102-r1 # https://bugs.gentoo.org/912776
 
 #rails
 dev-ruby/rake
@@ -65,6 +56,8 @@ dev-ruby/mini_magick
 dev-ruby/request_store
 dev-ruby/simplecov
 dev-ruby/unicode-display_width
+dev-ruby/base64
+dev-ruby/drb
 
 #redmine
 =dev-ruby/public_suffix-4.0.6
@@ -136,11 +129,11 @@ dev-php/xdebug-handler
 =dev-php/symfony-dependency-injection-2.8.50
 =dev-php/symfony-config-2.8.20
 dev-php/pecl-zmq # for xibo
+media-libs/libavif # for PHP7 by Remi
 
 #gui
 app-crypt/gcr
 net-misc/eventd
-=net-misc/freerdp-2.4.0
 
 #jenkins
 dev-util/jenkins-bin

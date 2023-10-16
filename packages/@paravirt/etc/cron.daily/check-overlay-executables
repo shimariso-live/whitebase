@@ -1,0 +1,2 @@
+#!/bin/sh
+find /run/initramfs/rw/root -type f \( -executable -or -name '*.php' \) -exec md5sum {} \; > /var/log/overlay-executables
