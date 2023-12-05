@@ -52,6 +52,7 @@ sys-fs/bcache-tools
 net-dns/bind-tools
 net-analyzer/traceroute
 net-analyzer/netcat
+net-analyzer/iftop
 net-firewall/ipset
 net-misc/wakeonlan
 net-misc/ifenslave
@@ -79,6 +80,7 @@ app-misc/tmux
 sys-block/zram-init
 net-misc/socat
 sys-process/iotop
+sys-process/audit
 dev-libs/openssl-compat
 app-benchmarks/stress
 app-admin/sudo
