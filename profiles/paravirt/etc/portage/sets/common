@@ -6,3 +6,4 @@ sys-process/cronie
 app-editors/vim
 sys-fs/btrfs-progs
 sys-fs/xfsprogs
+sys-process/audit
