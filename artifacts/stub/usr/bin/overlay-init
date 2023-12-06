@@ -111,17 +111,19 @@ def kexec_boot(root, root_device_for_new_kernel, verbose=False):
     kernel = None
     initramfs = None
     for candidate in ["kernel", "vmlinuz"]:
-        path = os.path.join(bootdir, candidate)
+        path = os.path.join(root, candidate)
+        if not os.path.exists(path): path = os.path.join(bootdir, candidate)
         if os.path.exists(path):
             kernel = path
-            if verbose: print("Kernel found: %s" % kernel)
+            print("Kernel found: %s" % kernel)
             break
     if kernel is not None:
         for candidate in ["initramfs", "initrd.img"]:
-            path = os.path.join(bootdir, candidate)
+            path = os.path.join(root, candidate)
+            if not os.path.exists(path): path = os.path.join(bootdir, candidate)
             if os.path.exists(path):
                 initramfs = path
-                if verbose: print("Initramfs found: %s" % initramfs)
+                print("Initramfs found: %s" % initramfs)
                 break
     if kernel is None:
         latest = 0
@@ -131,14 +133,15 @@ def kexec_boot(root, root_device_for_new_kernel, verbose=False):
             if mtime < latest: continue
             kernel = e
             latest = mtime
-            if verbose: print("Kernel found: %s" % kernel)
+            print("Kernel found: %s" % kernel)
         if kernel is not None:
             initramfs = os.path.join(bootdir, "initramfs") + os.path.basename(kernel)[7:] + ".img"
+            if not os.path.isfile(initramfs): initramfs = os.path.join(bootdir, "initrd") + os.path.basename(kernel)[7:] + ".img"
             if not os.path.isfile(initramfs): initramfs = None
-            elif verbose: print("Initramfs found: %s" % initramfs)
+            else: print("Initramfs found: %s" % initramfs)
 
     if kernel is None:
-        if verbose: print("Kernel not found")
+        print("Kernel not found")
         return False
     with open("/proc/cmdline") as f:
         cmdline = f.read()
