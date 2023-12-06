@@ -10,6 +10,7 @@ ARCH=amd64
 sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
 echo -e '/dev/vdb /                       xfs     defaults        1 1' > /mnt/etc/fstab
 echo -e '[Match]\nName=eth0 host0\n[Network]\nDHCP=yes\nMulticastDNS=yes\nLLMNR=yes\n' > /mnt/etc/systemd/network/50-eth0.network
+echo 'deb http://security.debian.org/debian-security bookworm-security main' >> /mnt/etc/apt/sources.list
 
 [ -f /etc/localtime ] && cp -a /etc/localtime /mnt/etc/
 
