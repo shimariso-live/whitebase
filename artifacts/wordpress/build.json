@@ -1,0 +1,5 @@
+{
+	"profile":"paravirt",
+	"packages":["@paravirt","@common","dev-lang/php","dev-db/mysql","mail-mta/postfix","net-fs/samba","dev-db/redis","dev-php/pecl-imagick","dev-php/pecl-redis","dev-php/pecl-apcu","net-analyzer/zabbix","www-apache/mod_authnz_external","app-admin/logrotate"],
+	"services":["apache2","mysqld","postfix","redis","cronie","qemu-guest-agent"]
+}

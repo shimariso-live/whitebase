@@ -1,0 +1,8 @@
+ServerAdmin wordpress@localhost
+DocumentRoot "/home/wordpress/sites/default"
+
+<Directory "/home/wordpress/sites/default">
+        Options FollowSymLinks
+        AllowOverride All
+        Require all granted
+</Directory>

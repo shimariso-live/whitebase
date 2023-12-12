@@ -1,0 +1,14 @@
+#!/bin/sh
+useradd -m -G apache wordpress 
+mkdir /home/wordpress/bin
+echo 'export PATH=$PATH:$HOME/bin' >> /home/wordpress/.bashrc
+chown -R wordpress /home/wordpress
+
+cat << 'EOS' > /tmp/sql
+create database `wordpress`;
+create user `wordpress`@localhost;
+grant all privileges on `wordpress`.* to `wordpress`@localhost;
+EOS
+
+with-mysql 'mysql -u root < /tmp/sql'
+
