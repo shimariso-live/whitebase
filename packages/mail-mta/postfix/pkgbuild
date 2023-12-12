@@ -1,4 +1,6 @@
 #!/bin/sh
 set -e
+sed -i 's/^#inet_interfaces = all/inet_interfaces = loopback-only/' /etc/postfix/main.cf
+sed -i 's/^inet_protocols = ipv4/inet_protocols = all/' /etc/postfix/main.cf
 /usr/bin/newaliases
 
