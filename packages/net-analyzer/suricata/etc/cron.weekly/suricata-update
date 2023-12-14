@@ -1,0 +1,4 @@
+#!/bin/sh
+systemctl is-active -q suricata || exit 0
+tty -s || exec >/var/log/suricata-update.log 2>&1
+suricata-update --no-test && systemctl restart suricata
