@@ -90,7 +90,7 @@ dev-ruby/nio4r
 =dev-ruby/thor-1.1.0
 =dev-ruby/ast-2.4.2
 =dev-ruby/childprocess-4.0.0
-=dev-ruby/chunky_png-1.4.0
+dev-ruby/chunky_png
 dev-ruby/docile
 dev-ruby/parser
 www-servers/puma

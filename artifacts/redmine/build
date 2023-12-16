@@ -4,7 +4,7 @@ set -e
 mkdir -p /boot/grub
 echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
 
-download https://www.redmine.org/releases/redmine-5.0.5.tar.gz | tar zxf - --strip-components=1 -C /var/www/localhost/htdocs
+download https://www.redmine.org/releases/redmine-5.1.1.tar.gz | tar zxf - --strip-components=1 -C /var/www/localhost/htdocs
 
 chown -R apache.apache /var/www/localhost
 rm -rf /usr/local/lib64/ruby/gems/*/cache
@@ -35,3 +35,7 @@ with-mysql 'rake db:migrate' 'rake redmine:load_default_data' 'mysql -u redmine 
 # setup apache
 sed -i 's/root@localhost/redmine@example.com/' /etc/apache2/vhosts.d/default_vhost.include
 sed -i 's/^DocumentRoot "\/var\/www\/localhost\/htdocs"$/DocumentRoot "\/var\/www\/localhost\/htdocs\/public"/' /etc/apache2/vhosts.d/default_vhost.include
+
+# Run DB migration before launching apache
+mkdir -p /etc/systemd/system/apache2.service.d
+echo -e "[Unit]\nAfter=mysqld.service\n\n[Service]\nEnvironment=RAILS_ENV=production\nExecStartPre=rake --rakefile /var/www/localhost/htdocs/Rakefile db:migrate" > /etc/systemd/system/apache2.service.d/db-migration.conf

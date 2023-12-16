@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
 
-recursive-touch /sbin/overlay-init
+recursive-touch /usr/sbin/overlay-init /usr/bin/check-outdated-packages
 rm -f /boot/initramfs

@@ -55,6 +55,7 @@ www-servers/puma
 dev-ruby/addressable
 dev-ruby/ffi
 dev-ruby/mysql2
+dev-libs/openssl-compat # needed by passenger
 www-apache/passenger
 dev-ruby/bundler
 
