@@ -1,6 +1,17 @@
 {
 	"profile":"paravirt",
-	"packages":["@nextcloud","@common"],
+	"packages":["@nextcloud","@common","dev-lang/php","dev-php/pecl-imagick","dev-php/pecl-redis","dev-php/pecl-apcu","net-fs/samba"],
 	"services":["apache2","mysqld","postfix","redis","cronie","qemu-guest-agent"],
-	"outfile":"nextcloud.squashfs"
+	"variants":{
+		"18":{"packages":["@nextcloud","@common","@php74"]},
+		"19":{"packages":["@nextcloud","@common","@php74"]},
+		"20":{"packages":["@nextcloud","@common","@php74"]},
+		"21":{"packages":["@nextcloud","@common","@php80"]},
+		"22":{"packages":["@nextcloud","@common","@php80"]},
+		"23":{"packages":["@nextcloud","@common","@php80"]},
+		"24":{},
+		"25":{},
+		"26":{},
+		"27":{}
+	}
 }

@@ -1,16 +1,11 @@
 @paravirt
 @common
-dev-lang/php
 dev-db/mysql
 mail-mta/postfix
-net-fs/samba
 media-video/ffmpeg
 dev-db/redis
-dev-php/pecl-imagick
 sys-fs/btrfs-progs
 sys-fs/xfsprogs
-dev-php/pecl-redis
-dev-php/pecl-apcu
 net-analyzer/zabbix
 dev-util/trace-cmd
 www-apache/mod_authnz_external
