@@ -6,11 +6,15 @@ net-misc/modemmanager
 net-libs/libmbim
 net-libs/libqmi
 dev-util/gdbus-codegen
-net-analyzer/snort
 app-emulation/qemu
 app-emulation/virtiofsd
 sys-boot/mokutil
 sys-fs/squashfs-tools # aims 4.6.1
+
+# IDS
+net-analyzer/snort
+net-analyzer/suricata
+net-libs/libhtp
 
 # ui
 dev-cpp/argparse
