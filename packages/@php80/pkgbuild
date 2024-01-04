@@ -1,0 +1,46 @@
+#!/bin/sh
+set -e
+PHP_VER=8.0.30-1.el9.remi
+ARCH=`uname -m`
+for i in php php-common php-intl php-pdo php-mysqlnd php-gd php-xml php-mbstring php-fpm php-cli; do
+        download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php80-$i-$PHP_VER.$ARCH.rpm > /tmp/php-$i.rpm
+done
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php80-php-process-$PHP_VER.$ARCH.rpm > /tmp/php-process.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php80-php-smbclient-1.1.1-1.el9.remi.$ARCH.rpm > /tmp/smbclient.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php80-php-pecl-zip-1.22.2-1.el9.remi.$ARCH.rpm > /tmp/pecl-zip.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/php80-php-pecl-apcu-5.1.23-1.el9.remi.$ARCH.rpm > /tmp/pecl-apcu.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/oniguruma5php-6.9.8-1.el9.remi.$ARCH.rpm > /tmp/oniguruma.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/gd3php-2.3.3-9.el9.remi.$ARCH.rpm > /tmp/gd.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/libavif-0.11.1-0.$ARCH.rpm > /tmp/libavif.rpm
+download http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/libicu72-72.1-1.el9.remi.$ARCH.rpm > /tmp/libicu72.rpm
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/libxml2-2.9.13-5.el9.$ARCH.rpm > /tmp/libxml2.rpm
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/libsmbclient-4.18.6-100.el9.$ARCH.rpm > /tmp/libsmbclient.rpm
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/samba-client-libs-4.18.6-100.el9.$ARCH.rpm > /tmp/samba-client-libs.rpm
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/libwbclient-4.18.6-100.el9.$ARCH.rpm > /tmp/libwbclient.rpm
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/libicu-67.1-9.el9.$ARCH.rpm > /tmp/libicu67.rpm
+download http://ftp.riken.jp/Linux/fedora/epel/9/Everything/$ARCH/Packages/l/libraqm-0.8.0-1.el9.$ARCH.rpm > /tmp/libraqm.rpm
+download http://ftp.riken.jp/Linux/fedora/epel/9/Everything/$ARCH/Packages/s/svt-av1-libs-0.9.0-1.el9.$ARCH.rpm > /tmp/svt-av1-libs.rpm
+
+ls -l /tmp/*.rpm
+
+for i in /tmp/*.rpm; do
+        rpm2targz -O $i | tar zxvf - -C /
+done
+
+download http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/Packages/openssl-libs-3.0.7-25.el9.$ARCH.rpm > /tmp/openssl-libs.rpm
+rpm2targz -O /tmp/openssl-libs.rpm | tar zxvf - -C /opt/remi/php80/root
+mkdir -p /etc/pki/tls
+ln -s ../../ssl/openssl.cnf /etc/pki/tls/openssl.cnf
+
+sed -i 's/^pdo_mysql\.default_socket=.*$/pdo_mysql.default_socket=\/run\/mysqld\/mysqld.sock/' /etc/opt/remi/php80/php.ini
+sed -i 's/^mysqli\.default_socket =.*$/mysqli.default_socket = \/run\/mysqld\/mysqld.sock/' /etc/opt/remi/php80/php.ini
+sed -i 's/^;apc.enable_cli=0$/apc.enable_cli=1/' /etc/opt/remi/php80/php.d/40-apcu.ini
+
+sed -i '/^ExecStart=.*$/a Environment=LD_LIBRARY_PATH=/opt/remi/php80/root/usr/lib64' /usr/lib/systemd/system/php80-php-fpm.service
+
+chown -R root:apache /var/opt/remi/php80/lib/php/opcache /var/opt/remi/php80/lib/php/session /var/opt/remi/php80/lib/php/wsdlcache
+
+if [ -d /etc/apache2/modules.d ]; then
+	ln -s /etc/httpd/conf.d/php80-php.conf /etc/apache2/modules.d/70_remi_php80_php.conf
+fi
+

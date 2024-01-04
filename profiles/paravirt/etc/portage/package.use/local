@@ -7,6 +7,7 @@ app-editors/vim minimal
 sys-apps/systemd policykit # policykit is required by firewalld
 sys-boot/grub -fonts -nls -themes -grub_platforms_efi-64 -grub_platforms_pc grub_platforms_xen grub_platforms_xen-32
 app-crypt/libb2 -openmp # not to depend on gcc
+dev-libs/openssl weak-ssl-ciphers # some binary still depends on this
 
 # motion
 media-video/motion ffmpeg v4l -webp # webp causes build error 20230916
@@ -37,7 +38,7 @@ net-analyzer/fping suid
 app-eselect/eselect-php fpm apache2
 virtual/imagemagick-tools jpeg tiff
 media-gfx/imagemagick -openmp postscript jpeg png svg xml tiff truetype webp # pecl-imagick hates openmp
-www-servers/apache apache2_modules_http2 apache2_modules_proxy apache2_modules_proxy_connect apache2_modules_proxy_http apache2_modules_proxy_ajp apache2_modules_remoteip
+www-servers/apache apache2_modules_http2 apache2_modules_proxy apache2_modules_proxy_connect apache2_modules_proxy_http apache2_modules_proxy_ajp apache2_modules_proxy_fcgi apache2_modules_remoteip
 www-apache/mod_extract_forwarded mod-proxy
 mail-mta/postfix mysql sasl
 

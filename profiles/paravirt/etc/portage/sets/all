@@ -67,6 +67,9 @@ net-misc/netkit-telnetd
 net-firewall/firewalld
 
 media-fonts/urw-fonts
+dev-lang/php
+dev-php/pecl-redis
+dev-php/pecl-apcu
 dev-php/pecl-imagick
 dev-php/PEAR-PEAR
 dev-php/xdebug
