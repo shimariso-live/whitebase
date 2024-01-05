@@ -1,0 +1,3 @@
+#!/bin/sh
+# Do not need this unless HP Smatyarray controller is used
+chmod -x /etc/cron.hourly/cciss_vol_status
