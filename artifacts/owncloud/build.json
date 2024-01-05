@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@nextcloud","@common"],
+	"packages":["@owncloud","@common"],
 	"services":["apache2","mysqld","postfix","redis","cronie","qemu-guest-agent"]
 }

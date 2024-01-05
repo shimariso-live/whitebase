@@ -1,0 +1,14 @@
+@paravirt
+@common
+@php74
+dev-db/mysql
+mail-mta/postfix
+net-fs/samba
+media-video/ffmpeg
+dev-db/redis
+sys-fs/btrfs-progs
+sys-fs/xfsprogs
+net-analyzer/zabbix
+dev-util/trace-cmd
+www-apache/mod_authnz_external
+app-admin/logrotate
