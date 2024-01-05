@@ -1,5 +1,5 @@
 #!/bin/sh
 set -e
 
-recursive-touch /usr/sbin/overlay-init /usr/bin/check-outdated-packages
+recursive-touch /usr/sbin/overlay-init /usr/bin/strings /usr/bin/check-outdated-packages /usr/bin/install-cloudflared
 rm -f /boot/initramfs
