@@ -2,4 +2,8 @@
 set -e
 
 recursive-touch /usr/sbin/overlay-init /usr/bin/strings /usr/bin/check-outdated-packages /usr/bin/install-cloudflared
+
+# prevent loading keymap by systemd-vconsole-setup.service
+echo 'KEYMAP=@kernel' > /etc/vconsole.conf
+
 rm -f /boot/initramfs
