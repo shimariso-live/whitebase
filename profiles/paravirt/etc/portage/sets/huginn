@@ -14,16 +14,12 @@ dev-ruby/thread_safe
 dev-ruby/tzinfo
 dev-ruby/builder
 dev-ruby/erubi
-dev-ruby/rails-dom-testing
 dev-ruby/i18n
 dev-ruby/zeitwerk
-dev-ruby/activesupport
 dev-ruby/bundler
 dev-ruby/rails-html-sanitizer
 dev-ruby/rack-test
 dev-ruby/marcel
-dev-ruby/globalid
-dev-ruby/sprockets-rails
 dev-ruby/mini_magick
 dev-ruby/public_suffix
 dev-ruby/rexml

@@ -20,7 +20,6 @@ dev-ruby/childprocess
 dev-ruby/css_parser
 dev-ruby/docile
 dev-ruby/htmlentities
-#dev-ruby/arel # due to ruby2.7 incompatibility
 dev-ruby/mini_magick
 dev-ruby/mocha
 dev-ruby/parallel
@@ -29,12 +28,9 @@ dev-ruby/ruby-openid
 dev-ruby/rack-openid
 dev-ruby/sprockets
 dev-ruby/rainbow
-dev-ruby/rbpdf-font
-dev-ruby/rbpdf
 dev-ruby/redcarpet
 dev-ruby/request_store
 dev-ruby/roadie
-#dev-ruby/roadie-rails # due to ruby2.7 incompatibility
 dev-ruby/rouge
 dev-ruby/ruby-progressbar
 dev-ruby/unicode-display_width
@@ -45,12 +41,9 @@ dev-ruby/simplecov
 dev-ruby/yard
 dev-ruby/websocket-extensions
 dev-ruby/websocket-driver
-dev-ruby/globalid
 dev-ruby/mail
 dev-ruby/marcel
-#dev-ruby/nio4r # due to ruby2.7 incompatibility
 dev-ruby/zeitwerk
-dev-ruby/sprockets-rails
 www-servers/puma
 dev-ruby/addressable
 dev-ruby/ffi
