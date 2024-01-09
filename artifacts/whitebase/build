@@ -12,7 +12,10 @@ sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.targ
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/openvpn-client@.service
 sed -i 's/^WantedBy=multi-user.target$/WantedBy=multi-user.target installer.target transient.target/' /lib/systemd/system/zabbix-agentd.service
 
-recursive-touch /usr/share/shim/BOOTX64.EFI /usr/bin/do-with-lvm-snapshot /usr/bin/genpack-install
+recursive-touch /usr/bin/strings /usr/share/shim/BOOTX64.EFI /usr/bin/do-with-lvm-snapshot /usr/bin/genpack-install
+
+# zabbix to be able to access suricata logs
+id zabbix && id suricata && usermod -aG suricata zabbix
 
 mkdir -p /var/cache/repos
 
