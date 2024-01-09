@@ -45,7 +45,7 @@ mail-mta/postfix mysql sasl
 # samba
 net-fs/samba ldap client winbind zeroconf
 net-fs/cifs-utils -acl -ads -caps
-net-nds/openldap -tcpd samba sasl
+net-nds/openldap -tcpd samba sasl experimental # sssd needs experimental
 sys-libs/ldb ldap
 
 #nfs
