@@ -3,29 +3,34 @@ set -e
 ARCH=`uname -m`
 
 REMI_URL=http://ftp.riken.jp/Linux/remi/enterprise/9/safe/$ARCH/
+mkdir /tmp/remi
 for i in php php-common php-intl php-pdo php-mysqlnd php-gd php-xml php-mbstring php-fpm php-cli php-process php-smbclient php-pecl-zip php-pecl-apcu; do
-	download `get-rpm-download-url $REMI_URL php80-$i` > /tmp/php80-$i.rpm
+	download `get-rpm-download-url $REMI_URL php80-$i` > /tmp/remi/php80-$i.rpm
 done
-for i in oniguruma5php gd3php libavif libicu72; do
-	download `get-rpm-download-url $REMI_URL $i` > /tmp/$i.rpm
+for i in oniguruma5php gd3php libavif libicu73; do
+	download `get-rpm-download-url $REMI_URL $i` > /tmp/remi/$i.rpm
 done
 
 CENTOS_URL=http://ftp.riken.jp/Linux/centos-stream/9-stream/BaseOS/$ARCH/os/
-for i in libxml2 libsmbclient samba-client-libs libwbclient libicu; do
-	download `get-rpm-download-url $CENTOS_URL $i` > /tmp/$i.rpm
+mkdir /tmp/centos9stream
+for i in libxml2 libsmbclient samba-client-libs libwbclient libicu openssl-libs; do
+	download `get-rpm-download-url $CENTOS_URL $i` > /tmp/centos9stream/$i.rpm
 done
 
 EPEL_URL=http://ftp.riken.jp/Linux/fedora/epel/9/Everything/$ARCH/
+mkdir /tmp/epel
 for i in libraqm svt-av1-libs; do
-	download `get-rpm-download-url $EPEL_URL $i` > /tmp/$i.rpm
+	download `get-rpm-download-url $EPEL_URL $i` > /tmp/epel/$i.rpm
 done
 
-for i in /tmp/*.rpm; do
+for i in /tmp/remi/*.rpm; do
         rpm2targz -O $i | tar zxvf - -C /
 done
 
-download `get-rpm-download-url $CENTOS_URL openssl-libs` > /tmp/openssl-libs.rpm
-rpm2targz -O /tmp/openssl-libs.rpm | tar zxvf - -C /opt/remi/php80/root
+for i in /tmp/centos9stream/*.rpm /tmp/epel/*.rpm; do
+	rpm2targz -O $i | tar zxvf - -C /opt/remi/php80/root
+done
+
 mkdir -p /etc/pki/tls
 ln -s ../../ssl/openssl.cnf /etc/pki/tls/openssl.cnf
 
@@ -33,7 +38,7 @@ sed -i 's/^pdo_mysql\.default_socket=.*$/pdo_mysql.default_socket=\/run\/mysqld\
 sed -i 's/^mysqli\.default_socket =.*$/mysqli.default_socket = \/run\/mysqld\/mysqld.sock/' /etc/opt/remi/php80/php.ini
 sed -i 's/^;apc.enable_cli=0$/apc.enable_cli=1/' /etc/opt/remi/php80/php.d/40-apcu.ini
 
-sed -i '/^ExecStart=.*$/a Environment=LD_LIBRARY_PATH=/opt/remi/php80/root/usr/lib64' /usr/lib/systemd/system/php80-php-fpm.service
+sed -i '/^ExecStart=.*$/a Environment=LD_LIBRARY_PATH=/opt/remi/php80/root/usr/lib64:/opt/remi/php80/root/usr/lib64/samba' /usr/lib/systemd/system/php80-php-fpm.service
 
 chown -R root:apache /var/opt/remi/php80/lib/php/opcache /var/opt/remi/php80/lib/php/session /var/opt/remi/php80/lib/php/wsdlcache
 
