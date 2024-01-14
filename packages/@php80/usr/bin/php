@@ -1,4 +1,3 @@
 #!/bin/bash
 REMI_ROOT=/opt/remi/php80/root
-export LD_LIBRARY_PATH=$REMI_ROOT/usr/lib64:$REMI_ROOT/usr/lib64/samba
 exec $REMI_ROOT/usr/bin/php "$@"

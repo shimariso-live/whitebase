@@ -15,6 +15,7 @@
 app-editors/vim
 app-editors/nano
 dev-util/strace
+dev-util/patchelf # to modify binary provided by other distros
 
 media-video/motion
 dev-lua/luajson
