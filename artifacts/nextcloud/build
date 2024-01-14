@@ -52,9 +52,6 @@ download https://download.nextcloud.com/server/releases/$TARBALL | tar jxf - --s
 mkdir /var/lib/nextcloud
 chown -R apache:apache /var/www/localhost /var/lib/nextcloud
 
-# occ command
-gcc -o /usr/bin/occ /usr/src/occ/occ.c
-
 mkdir -p /.genpack
 #php -r 'include "/var/www/localhost/htdocs/version.php";echo $OC_VersionString;' > /.genpack/nextcloud-version
 

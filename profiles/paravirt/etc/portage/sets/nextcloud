@@ -1,5 +1,6 @@
 @paravirt
 @common
+@occ
 dev-db/mysql
 mail-mta/postfix
 media-video/ffmpeg
