@@ -1,0 +1,3 @@
+#!/bin/bash
+REMI_ROOT=/opt/remi/php74/root
+exec $REMI_ROOT/usr/bin/php "$@"
