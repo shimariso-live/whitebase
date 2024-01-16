@@ -2,6 +2,7 @@ sys-kernel/linux-firmware
 dev-libs/iniparser
 sys-apps/kbd
 sys-fs/xfsprogs
+sys-fs/bcachefs-tools
 sys-fs/lsscsi
 net-wireless/wireless-tools
 net-wireless/wpa_supplicant
@@ -99,7 +100,7 @@ net-misc/rclone
 sys-power/nut
 net-wireless/bluez
 sys-firmware/bluez-firmware
-dev-util/cmake # for ESP-IDF
+dev-build/cmake # for ESP-IDF
 
 net-fs/samba
 net-fs/ksmbd-tools
