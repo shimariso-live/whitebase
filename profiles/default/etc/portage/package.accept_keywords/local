@@ -1,4 +1,5 @@
 sys-kernel/gentoo-sources
+sys-kernel/genkernel # for genkernel 4.3.10 which is needed by kernel >=6.6
 sys-kernel/linux-firmware
 sys-apps/hwids
 net-misc/usbip
