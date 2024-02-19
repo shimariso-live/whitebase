@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+download `get-latest-download-url` > /usr/bin/cloudflared
+chmod 755 /usr/bin/cloudflared

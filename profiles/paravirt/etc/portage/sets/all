@@ -12,6 +12,7 @@
 @xibo
 @docker
 @huginn
+@cloudflared
 app-editors/vim
 app-editors/nano
 dev-debug/strace

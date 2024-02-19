@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+HEDGEDOC_DIR=/home/hedgedoc/hedgedoc
+useradd -u 1000 -m hedgedoc
+mkdir $HEDGEDOC_DIR
+download `get-latest-download-url` | tar zxvf - --strip-components=1 -C $HEDGEDOC_DIR
+
+cat << 'EOS' > /tmp/sql
+create database `hedgedoc` charset utf8mb4;
+create user `hedgedoc`@localhost;
+grant all privileges on `hedgedoc`.* to `hedgedoc`@localhost;
+EOS
+with-mysql 'mysql -u root < /tmp/sql'
+
+cat << 'EOS' > $HEDGEDOC_DIR/config.json
+{
+  "production": {
+    "db": {
+      "dialect": "mysql",
+      "username":"hedgedoc",
+      "database":"hedgedoc"
+   },
+   "host":"localhost",
+   "csp":{"enable": false, "addDefaults": false}
+  }
+}
+EOS
+chown -R hedgedoc:hedgedoc $HEDGEDOC_DIR
