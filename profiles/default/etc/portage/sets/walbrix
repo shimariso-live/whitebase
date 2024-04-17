@@ -64,7 +64,7 @@ net-dns/dnsmasq
 net-analyzer/net-snmp
 net-misc/iperf
 net-analyzer/tcpdump
-net-misc/taylor-uucp
+net-dialup/picocom
 net-misc/bridge-utils
 net-dialup/rp-pppoe
 net-dialup/ppp-scripts
@@ -99,7 +99,6 @@ net-misc/rclone
 
 sys-power/nut
 net-wireless/bluez
-sys-firmware/bluez-firmware
 dev-build/cmake # for ESP-IDF
 
 net-fs/samba
