@@ -18,7 +18,7 @@ for i in libxml2 libsmbclient samba-client-libs libwbclient libicu libtevent lib
 done
 
 EPEL_URL=http://ftp.riken.jp/Linux/fedora/epel/9/Everything/$ARCH/
-for i in libraqm svt-av1-libs liblzf; do
+for i in libraqm svt-av1-libs liblzf libimagequant libdav1d; do
 	download `get-rpm-download-url $EPEL_URL $i` > /tmp/sandbox/$i.rpm
 done
 
