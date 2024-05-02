@@ -5,7 +5,7 @@ After=network.target
 [Service]
 TimeoutStartSec=0
 Type=notify
-ExecStart=cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+ExecStart=cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel --edge-ip-version auto run
 Restart=on-failure
 RestartSec=5s
 
