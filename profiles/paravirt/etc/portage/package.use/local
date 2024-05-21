@@ -83,12 +83,11 @@ dev-libs/libpcre2 pcre16 pcre32
 media-libs/freetype png
 app-editors/gedit -python
 
-dev-ruby/* -ruby_targets_ruby26 ruby_targets_ruby27
-dev-ruby/mysql2 mysql -ruby_targets_ruby26 ruby_targets_ruby27
-www-apache/passenger apache2 -ruby_targets_ruby26 ruby_targets_ruby27
-www-servers/puma -ruby_targets_ruby26 ruby_targets_ruby27
-virtual/rubygems -ruby_targets_ruby26 ruby_targets_ruby27
-virtual/ruby-ssl -ruby_targets_ruby26 ruby_targets_ruby27
+www-apache/passenger ruby_targets_ruby31 -ruby_targets_ruby32 -ruby_targets_ruby33
+www-servers/puma ruby_targets_ruby31 -ruby_targets_ruby32 -ruby_targets_ruby33
+virtual/rubygems ruby_targets_ruby31 -ruby_targets_ruby32 -ruby_targets_ruby33
+virtual/ruby-ssl ruby_targets_ruby31 -ruby_targets_ruby32 -ruby_targets_ruby33
+dev-ruby/mysql2 mysql
 
 # ms sql server
 sys-auth/sssd -acl -locator -manpages -netlink
@@ -120,6 +119,9 @@ media-libs/libglvnd -X
 
 # Arduino
 dev-util/astyle java
+
+# Restrict ruby versions
+*/* RUBY_TARGETS: ruby31 -ruby32 -ruby33
 
 # Restrict python versions
 */* PYTHON_TARGETS: -python3_12 python3_11 -python3_10
