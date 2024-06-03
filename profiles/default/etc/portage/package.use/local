@@ -23,6 +23,7 @@ net-analyzer/zabbix sqlite agent proxy curl snmp -postgres
 net-analyzer/fping suid
 sys-apps/smartmontools minimal
 net-fs/samba -system-mitkrb5 winbind client
+dev-lang/perl minimal # samba needs perl
 dev-db/mysql -perl
 sys-power/nut usb
 net-fs/nfs-utils -tcpd
@@ -85,5 +86,5 @@ sys-libs/ldb -ldap
 # wb
 dev-libs/poco -mongodb
 
-*/* PYTHON_TARGETS: python3_11 -python3_10
-*/* PYTHON_SINGLE_TARGET: python3_11 -python3_10
+*/* PYTHON_TARGETS: -python3_13 python3_12 -python3_11
+*/* PYTHON_SINGLE_TARGET: -python3_13 python3_12 -python3_11
