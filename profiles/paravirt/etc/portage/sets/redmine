@@ -51,4 +51,7 @@ dev-ruby/mysql2
 dev-libs/openssl-compat # needed by passenger
 www-apache/passenger
 dev-ruby/bundler
-
+dev-ruby/rails-html-sanitizer
+dev-ruby/builder
+dev-ruby/erubi
+dev-ruby/tzinfo
