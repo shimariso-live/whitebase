@@ -3,7 +3,7 @@ set -e
 /lib/systemd/systemd-networkd-wait-online
 BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos-vault/6.10/os/x86_64/
 
-/sbin/mkfs.xfs -m crc=0 -n ftype=0 -f /dev/vdb
+/sbin/mkfs.xfs -m crc=0 -n ftype=0 -i nrext64=0 -f /dev/vdb
 mount /dev/vdb /mnt
 mkdir /mnt/dev /mnt/proc
 mount -t proc proc /mnt/proc

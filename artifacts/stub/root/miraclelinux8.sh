@@ -3,7 +3,7 @@ set -e
 /lib/systemd/systemd-networkd-wait-online
 BASE_URL=http://repo.dist.miraclelinux.net/miraclelinux/8-latest/BaseOS/x86_64/os/
 
-/sbin/mkfs.xfs -f /dev/vdb
+/sbin/mkfs.xfs -f -i nrext64=0 /dev/vdb
 mount /dev/vdb /mnt
 mkdir /mnt/dev /mnt/proc /mnt/sys
 mount -o bind /proc /mnt/proc

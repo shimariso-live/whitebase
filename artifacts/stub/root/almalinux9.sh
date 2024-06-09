@@ -4,7 +4,7 @@ set -e
 RELEASEVER=9
 BASE_URL=http://ftp.iij.ad.jp/pub/linux/almalinux/$RELEASEVER/BaseOS/x86_64/os/
 
-/sbin/mkfs.xfs -f /dev/vdb
+/sbin/mkfs.xfs -f -i nrext64=0 /dev/vdb
 mount /dev/vdb /mnt
 mkdir /mnt/dev /mnt/proc /mnt/sys
 mount -o bind /proc /mnt/proc
