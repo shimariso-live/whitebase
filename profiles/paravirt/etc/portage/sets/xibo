@@ -4,6 +4,5 @@ mail-mta/postfix
 sys-fs/btrfs-progs
 sys-fs/xfsprogs
 dev-util/trace-cmd
-www-apache/mod_authnz_external
 app-admin/logrotate
 dev-php/pecl-zmq
