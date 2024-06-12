@@ -12,13 +12,13 @@ cp -a /dev/null /dev/urandom /mnt/dev/
 mkdir -p /mnt/etc/dracut.conf.d
 echo 'add_drivers+=" xfs "' > /mnt/etc/dracut.conf.d/xfs.conf
 
-rpmbootstrap $BASE_URL /mnt yum centos-release
+rpmbootstrap --no-signature $BASE_URL /mnt yum centos-release
 
 echo -e 'search local\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4860:4860::8888\nnameserver 2001:4860:4860::8844' > /mnt/etc/resolv.conf
 
 
 rm /mnt/var/lib/rpm/*
-chroot /mnt rpm --rebuilddb
+chroot /mnt /bin/rpm --rebuilddb
 
 sed -i -e "s/^mirrorlist=http:\/\/mirrorlist.centos.org/#mirrorlist=http:\/\/mirrorlist.centos.org/g" /mnt/etc/yum.repos.d/CentOS-Base.repo
 sed -i -e "s/^#baseurl=http:\/\/mirror.centos.org/baseurl=http:\/\/ftp.iij.ad.jp\/pub\/linux\/centos-vault/g" /mnt/etc/yum.repos.d/CentOS-Base.repo
@@ -49,5 +49,7 @@ chroot /mnt /sbin/chkconfig acpid on
 
 umount /mnt/proc
 umount /mnt
+
+echo "kexec-2.0.28 may not be able to load CentOS6's kernel"
 
 reboot
