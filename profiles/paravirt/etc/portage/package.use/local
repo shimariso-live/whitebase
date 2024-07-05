@@ -52,7 +52,7 @@ sys-libs/ldb ldap
 net-fs/nfs-utils -tcpd
 net-nds/rpcbind -tcpd
 
-net-misc/rsync xxhash
+net-misc/rsync xxhash rrsync
 dev-util/trace-cmd -audit
 
 #firewalld

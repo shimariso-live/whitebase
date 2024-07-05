@@ -30,7 +30,7 @@ net-fs/nfs-utils -tcpd
 sys-apps/kmod lzma -python
 sys-libs/ncurses tinfo
 sys-fs/lvm2 lvm -readline systemd -thin udev
-net-misc/rsync xxhash
+net-misc/rsync xxhash rrsync
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
 app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen qemu_softmmu_targets_aarch64
