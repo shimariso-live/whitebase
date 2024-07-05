@@ -75,7 +75,6 @@ dev-php/pecl-apcu
 dev-php/pecl-imagick
 dev-php/PEAR-PEAR
 dev-php/xdebug
-dev-php/composer
 
 dev-libs/iniparser
 net-fs/nfs-utils
