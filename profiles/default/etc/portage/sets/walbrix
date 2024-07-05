@@ -55,6 +55,7 @@ net-analyzer/traceroute
 net-analyzer/netcat
 net-analyzer/iftop
 net-firewall/ipset
+net-firewall/nftables
 net-misc/wakeonlan
 net-misc/ifenslave
 net-misc/vconfig
