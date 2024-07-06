@@ -1,0 +1,8 @@
+@paravirt
+@common
+net-analyzer/suricata
+net-analyzer/zabbix
+net-fs/samba
+net-dns/avahi
+app-admin/ulogd
+app-admin/logrotate

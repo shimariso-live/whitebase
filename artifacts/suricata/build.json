@@ -1,0 +1,6 @@
+{
+	"profile":"paravirt",
+	"description":"Suricata appliance",
+	"packages":["@suricata"],
+	"services":["suricata","cronie","qemu-guest-agent"]
+}

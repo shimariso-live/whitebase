@@ -13,6 +13,7 @@
 @docker
 @huginn
 @cloudflared
+@suricata
 app-editors/vim
 app-editors/nano
 dev-debug/strace
