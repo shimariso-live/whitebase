@@ -2,11 +2,14 @@
 set -e
 /lib/systemd/systemd-networkd-wait-online
 BASE_URL=http://ftp.iij.ad.jp/pub/linux/gentoo/
-LATEST_STAGE3_URL=${BASE_URL}releases/amd64/autobuilds/`curl -s ${BASE_URL}releases/amd64/autobuilds/latest-stage3-amd64-systemd.txt|grep -ve '^#'|sed 's/\s[0-9]\+$//'`
+LATEST_STAGE3_URL=${BASE_URL}releases/amd64/autobuilds/`curl -s ${BASE_URL}releases/amd64/autobuilds/latest-stage3-amd64-systemd.txt|grep -e '\.tar\.xz [0-9]\+$'|sed 's/\s[0-9]\+$//'`
 PORTAGE_URL=${BASE_URL}snapshots/portage-latest.tar.xz
-/sbin/mkfs.btrfs -f /dev/vdb
-mkdir -p /mnt
-mount /dev/vdb /mnt
+
+if /sbin/mkfs.xfs -f /dev/vdb; then
+	mount /dev/vdb /mnt
+else
+	mount -t virtiofs fs /mnt
+fi
 
 echo "Downloading stage3..."
 curl -s "$LATEST_STAGE3_URL" | tar Jxpf - -C /mnt
@@ -24,6 +27,7 @@ cp /etc/resolv.conf /mnt/etc/
 [ -f /etc/localtime ] && cp -a /etc/localtime /mnt/etc/
 [ -d /root/.ssh ] && cp -a /root/.ssh /mnt/root/
 [ -d /etc/ssh -a -d /mnt/etc/ssh ] && cp -a /etc/ssh/*_key /etc/ssh/*_key.pub /mnt/etc/ssh/
+echo 'sys-kernel/installkernel dracut' >> /mnt/etc/portage/package.use/kernel
 chroot /mnt emerge gentoo-kernel-bin
 chroot /mnt systemctl enable systemd-resolved sshd
 mv /mnt/etc/issue.logo /mnt/etc/issue

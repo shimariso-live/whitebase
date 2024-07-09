@@ -1,11 +1,14 @@
 #!/bin/sh
 set -e
 /lib/systemd/systemd-networkd-wait-online
-BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos/7/os/x86_64/
+BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos-vault/7.9.2009/os/x86_64/
 
-
-/sbin/mkfs.xfs -m crc=0 -n ftype=0 -i nrext64=0 -f /dev/vdb
-mount /dev/vdb /mnt
+if /sbin/mkfs.xfs -m crc=0 -n ftype=0 -i nrext64=0 -f /dev/vdb; then
+	mount /dev/vdb /mnt
+else
+	mount -t virtiofs fs /mnt
+	echo "WARNING: virtiofs is not supported by CentOS 7. the system won't boot."
+fi
 mkdir /mnt/dev /mnt/proc
 mount -t proc proc /mnt/proc
 cp -a /dev/null /dev/urandom /mnt/dev/
@@ -20,6 +23,8 @@ echo -e 'search local\nnameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 2001:4
 rm /mnt/var/lib/rpm/*
 chroot /mnt rpm --rebuilddb
 echo 7 > /mnt/etc/yum/vars/releasever
+sed -i 's/^mirrorlist=/#mirrorlist=/g' /mnt/etc/yum.repos.d/CentOS-Base.repo
+sed -i 's/^#baseurl=http:\/\/mirror\.centos\.org/baseurl=http:\/\/vault\.centos\.org/g' /mnt/etc/yum.repos.d/CentOS-Base.repo
 chroot /mnt yum install -y "yum" "passwd" "vim-minimal" "strace" "less" "kernel" "tar" "openssh-server" "openssh-clients" "avahi" "NetworkManager" "xfsprogs" "qemu-guest-agent"
 
 hostname > /mnt/etc/hostname
