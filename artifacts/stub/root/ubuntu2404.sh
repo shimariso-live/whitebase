@@ -12,7 +12,7 @@ else
 	mount -t $ROOTFS_TYPE $ROOTFS_DEVICE /mnt
 fi
 
-/usr/sbin/debootstrap --include="ubuntu-minimal,initramfs-tools,openssh-server,linux-generic,avahi-daemon,llmnrd,qemu-guest-agent,locales-all" --components=main,universe --arch=amd64 noble /mnt https://ftp.udx.icscoe.jp/Linux/ubuntu
+/usr/sbin/debootstrap --include="ubuntu-minimal,initramfs-tools,openssh-server,linux-generic,avahi-daemon,llmnrd,qemu-guest-agent,locales-all" --components=main,universe --arch=amd64 noble /mnt http://www.ftp.ne.jp/Linux/packages/ubuntu/archive
 
 sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
 echo -e "$ROOTFS_DEVICE /                       $ROOTFS_TYPE     defaults        1 1" > /mnt/etc/fstab
