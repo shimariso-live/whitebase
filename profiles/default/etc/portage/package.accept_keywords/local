@@ -11,6 +11,7 @@ app-emulation/virtiofsd
 sys-boot/mokutil
 sys-fs/squashfs-tools # aims 4.6.1
 sys-fs/bcachefs-tools
+app-crypt/gocryptfs
 
 # IDS
 net-analyzer/snort
