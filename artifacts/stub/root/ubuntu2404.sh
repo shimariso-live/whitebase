@@ -12,7 +12,23 @@ else
 	mount -t $ROOTFS_TYPE $ROOTFS_DEVICE /mnt
 fi
 
-/usr/sbin/debootstrap --include="ubuntu-minimal,initramfs-tools,openssh-server,linux-generic,avahi-daemon,llmnrd,qemu-guest-agent,locales-all" --components=main,universe --arch=amd64 noble /mnt http://www.ftp.ne.jp/Linux/packages/ubuntu/archive
+MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+
+case "$(uname -m)" in
+    x86_64)
+        ARCH="amd64"
+	MIRROR="http://www.ftp.ne.jp/Linux/packages/ubuntu/archive"
+        ;;
+    aarch64)
+        ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture"
+        exit 1
+        ;;
+esac
+
+/usr/sbin/debootstrap --include="ubuntu-minimal,initramfs-tools,openssh-server,linux-generic,avahi-daemon,llmnrd,qemu-guest-agent,locales-all" --components=main,universe --arch=$ARCH noble /mnt $MIRROR
 
 sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
 echo -e "$ROOTFS_DEVICE /                       $ROOTFS_TYPE     defaults        1 1" > /mnt/etc/fstab

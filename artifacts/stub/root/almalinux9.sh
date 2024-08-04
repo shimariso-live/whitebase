@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 /lib/systemd/systemd-networkd-wait-online
+
 RELEASEVER=9
-BASE_URL=http://ftp.iij.ad.jp/pub/linux/almalinux/$RELEASEVER/BaseOS/x86_64/os/
+BASE_URL=http://ftp.iij.ad.jp/pub/linux/almalinux/$RELEASEVER/BaseOS/$(uname -m)/os/
 
 if /sbin/mkfs.xfs -f -i nrext64=0 /dev/vdb; then
 	mount /dev/vdb /mnt

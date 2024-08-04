@@ -12,7 +12,19 @@ else
         mount -t $ROOTFS_TYPE $ROOTFS_DEVICE /mnt
 fi
 
-ARCH=amd64
+case "$(uname -m)" in
+    x86_64)
+        ARCH="amd64"
+        ;;
+    aarch64)
+        ARCH="arm64"
+        ;;
+    *)
+        echo "Unsupported architecture"
+        exit 1
+        ;;
+esac
+
 /usr/sbin/debootstrap --include="initramfs-tools,openssh-server,linux-image-$ARCH,dbus,systemd-resolved,qemu-guest-agent,locales-all" --components=main,universe --arch=$ARCH bookworm /mnt https://linux.yz.yamagata-u.ac.jp/pub/linux/debian
 
 sed -i 's/^\(root:\)[^:]*\(:.*\)$/\1\2/' /mnt/etc/shadow
