@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import os,sys,ctypes,ctypes.util,subprocess,shutil,glob,fcntl,stat
+import os,sys,ctypes,ctypes.util,subprocess,shutil,glob,fcntl,stat,tempfile
 
 # libc functions
 libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
@@ -39,6 +39,10 @@ def mount_tmpfs(target):
     os.makedirs(target,exist_ok=True)
     if libc.mount(b"tmpfs", target.encode(), b"tmpfs", MS_RELATIME, b"") < 0:
         raise Exception("Failed to mount tmpfs on %s." % target)
+
+def ensure_tmp_mounted():
+    if os.path.ismount("/tmp"): return
+    mount_tmpfs("/tmp")
 
 def mount_overlayfs(lowerdir,upperdir,workdir,target):
     os.makedirs(upperdir,exist_ok=True)
@@ -90,6 +94,25 @@ def get_luks_uuid(device):
         return None
     #else
     return output.decode().strip()
+
+def decompress_kernel_if_necessary(kernel):
+    kernel_bin = None
+    with open(kernel, "rb") as f:
+        kernel_bin = f.read()
+        if kernel_bin[0:8] != b"MZ\x00\x00zimg" or kernel_bin[24:28] != b"gzip": return kernel
+    #else
+    gzip_offset = kernel_bin.find(b"\x1f\x8b\x08\x00\x00\x00\x00\x00")
+    if gzip_offset < 0:
+        print("Gzip header not found in kernel %s" % kernel)
+        return kernel
+    #else
+    print("Decompressing compressed kernel %s..." % kernel)
+    ensure_tmp_mounted()
+    decompressed_kernel = tempfile.mktemp()
+    with open(decompressed_kernel, "wb") as f:
+        subprocess.Popen(["gunzip", "-c"], stdin=subprocess.PIPE, stdout=f).communicate(input=kernel_bin[gzip_offset:])
+
+    return decompressed_kernel
 
 def kexec_boot(root, root_device_for_new_kernel, verbose=False):
     if not os.path.isdir(root): return False
@@ -144,6 +167,9 @@ def kexec_boot(root, root_device_for_new_kernel, verbose=False):
     if kernel is None:
         print("Kernel not found")
         return False
+    
+    kernel = decompress_kernel_if_necessary(kernel)
+
     with open("/proc/cmdline") as f:
         cmdline = f.read()
     if verbose: print("cmdline=%s" % cmdline)
