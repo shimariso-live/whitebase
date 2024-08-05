@@ -184,7 +184,7 @@ def kexec_boot(root, root_device_for_new_kernel, verbose=False):
                 if cols[1] == "/":
                     has_fstab = True
                     break
-    if verbose: print("root entry %s in fatsb" % ("found" if has_fstab else "not found"))
+    if verbose: print("root entry %s in fstab" % ("found" if has_fstab else "not found"))
     has_rw = False
     new_cmdline = ""
     for arg in cmdline_args:
