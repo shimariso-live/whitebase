@@ -26,7 +26,7 @@ else
 fi
 
 echo "Downloading stage3..."
-curl -s "$LATEST_STAGE3_URL" | tar Jxpf - -C /mnt
+curl -s "$LATEST_STAGE3_URL" | tar Jxpf - --exclude='./dev/*' -C /mnt
 mkdir -p /mnt/var/db/repos/gentoo
 echo "Downloading portage..."
 curl -s "$PORTAGE_URL" | tar Jxpf - --strip-components=1 -C /mnt/var/db/repos/gentoo
