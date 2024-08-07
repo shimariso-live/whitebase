@@ -1,6 +1,6 @@
 dev-util/debootstrap
 dev-cpp/argparse
-app-admin/eclean-kernel # for ~arm64
-dev-python/pymountboot # for ~arm64
-app-emulation/qemu-guest-agent # for ~arm64
-sys-apps/kexec-tools # for ~arm64
+app-admin/eclean-kernel ~arm64
+dev-python/pymountboot ~arm64
+app-emulation/qemu-guest-agent ~arm64
+sys-apps/kexec-tools ~arm64

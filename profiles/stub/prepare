@@ -10,6 +10,8 @@ else
 fi
 (cd $GENPACK_PROGS_DIR && make && make install)
 
-build-kernel
+emerge -uDN -bk --binpkg-respect-use=y world @all eclean-kernel
 
-emerge -uDN -bk --binpkg-respect-use=y --exclude='sys-kernel/*' world @all
+eclean-kernel -n 1
+cd /boot
+ln -sf kernel-* kernel

@@ -1,0 +1,13 @@
+app-emulation/qemu-guest-agent
+sys-libs/liburing # for qemu-guest-agent
+net-vpn/wireguard-tools
+app-editors/nano
+dev-debug/strace
+sys-apps/kexec-tools
+dev-util/debootstrap
+app-arch/rpm
+dev-cpp/argparse # for rpmbootstrap
+sys-fs/btrfs-progs
+sys-fs/xfsprogs
+dev-libs/iniparser
+sys-fs/cryptsetup
