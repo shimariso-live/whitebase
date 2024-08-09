@@ -10,7 +10,5 @@ tar xf /tmp/llmnrd.tar.gz --strip-components=1 -C /tmp/llmnrd
 cd /tmp/llmnrd
 gcc -static -o /usr/bin/llmnrd -DVERSION_STRING="\"v`egrep '^VERSION = ' Makefile | sed 's/.*= //'`\"" -DGIT_VERSION='""' -DPIDFILE='"/run/llmnrd.pid"' llmnr.c iface.c socket.c util.c log.c llmnrd.c
 
-g++ -I /usr/include/libxml2 -std=c++20 -D__USE_REAL_MAIN__ -o /usr/bin/rpmbootstrap /usr/src/rpmbootstrap.cpp -lxml2 -lcurl
-
 echo 'KEYMAP=@kernel' > /etc/vconsole.conf
 sed -i 's/#DNSSEC=.*/DNSSEC=no/' /etc/systemd/resolved.conf
