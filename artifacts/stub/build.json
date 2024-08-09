@@ -1,6 +1,6 @@
 {
 	"compression":"xz",
 	"profile":"stub",
-	"packages":["@stub","binutils"],
+	"packages":["genpack/stub"],
 	"services":["qemu-guest-agent"]
 }
