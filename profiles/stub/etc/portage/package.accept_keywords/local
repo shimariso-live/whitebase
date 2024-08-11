@@ -5,4 +5,4 @@ dev-python/pymountboot ~arm64
 app-emulation/qemu-guest-agent ~arm64
 sys-apps/kexec-tools ~arm64
 net-misc/netkit-telnetd * # for riscv
-dev-util/debootstrap * # for riscv
+dev-util/debootstrap ** # for riscv

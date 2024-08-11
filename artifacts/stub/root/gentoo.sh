@@ -5,10 +5,15 @@ set -e
 case "$(uname -m)" in
     x86_64)
         ARCH="amd64"
+	ARCH2="amd64"
         ;;
     aarch64)
         ARCH="arm64"
+	ARCH2="arm64"
         ;;
+    riscv64)
+        ARCH="riscv"
+	ARCH2="rv64_lp64d"
     *)
         echo "Unsupported architecture"
         exit 1
@@ -16,7 +21,7 @@ case "$(uname -m)" in
 esac
 
 BASE_URL=http://ftp.iij.ad.jp/pub/linux/gentoo/
-LATEST_STAGE3_URL=${BASE_URL}releases/${ARCH}/autobuilds/`curl -s ${BASE_URL}releases/${ARCH}/autobuilds/latest-stage3-${ARCH}-systemd.txt|grep -e '\.tar\.xz [0-9]\+$'|sed 's/\s[0-9]\+$//'`
+LATEST_STAGE3_URL=${BASE_URL}releases/${ARCH}/autobuilds/`curl -s ${BASE_URL}releases/${ARCH}/autobuilds/latest-stage3-${ARCH2}-systemd.txt|grep -e '\.tar\.xz [0-9]\+$'|sed 's/\s[0-9]\+$//'`
 PORTAGE_URL=${BASE_URL}snapshots/portage-latest.tar.xz
 
 if /sbin/mkfs.xfs -f /dev/vdb; then
