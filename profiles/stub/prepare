@@ -7,6 +7,8 @@ if [ -d $GENPACK_OVERLAY/.git ]; then
         git -C $GENPACK_OVERLAY pull || echo "Failed accessing git. Proceedeng with present source..."
 else
         git clone https://github.com/wbrxcorp/genpack-overlay.git $GENPACK_OVERLAY
+fi
+if [ ! -f /etc/portage/repos.conf/genpack-overlay.conf ]; then
 	mkdir -p /etc/portage/repos.conf
 	echo -e '[genpack-overlay]\nlocation=/var/cache/repos/genpack-overlay' > /etc/portage/repos.conf/genpack-overlay.conf
 fi
