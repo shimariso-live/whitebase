@@ -115,7 +115,7 @@ def kexec_boot(root):
 
 def configure(ini):
     kexec_success = False
-    if subprocess.call(["/usr/bin/mount", "-o", "ro", "/dev/vdb", "/mnt"]) != 0:
+    if subprocess.call(["/usr/bin/mount", "-o", "ro", "/dev/vdb", "/mnt"]) == 0:
         try:
             kexec_success = kexec_boot("/mnt")
         finally:
