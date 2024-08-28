@@ -1,6 +1,5 @@
-#sys-kernel/gentoo-sources symlink
-#sys-kernel/genkernel -firmware
-sys-kernel/gentoo-kernel -initramfs savedconfig
+sys-kernel/installkernel dracut
+sys-kernel/genpack-kernel transient
 sys-auth/pambase -passwdqc
 app-editors/vim minimal
 sys-apps/kexec-tools lzma

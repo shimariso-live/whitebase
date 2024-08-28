@@ -1,0 +1,6 @@
+genpack/paravirt
+sys-apps/kexec-tools
+dev-util/debootstrap
+sys-fs/cryptsetup
+dev-util/rpmbootstrap
+sys-devel/binutils
