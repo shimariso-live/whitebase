@@ -1,5 +1,6 @@
 sys-kernel/installkernel dracut
-sys-kernel/genpack-kernel transient
+sys-kernel/genpack-kernel transient -binary
+sys-kernel/gentoo-kernel savedconfig
 sys-auth/pambase -passwdqc
 app-editors/vim minimal
 sys-apps/kexec-tools lzma
