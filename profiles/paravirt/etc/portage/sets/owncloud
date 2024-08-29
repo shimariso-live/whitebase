@@ -1,5 +1,4 @@
-@paravirt
-@common
+genpack/paravirt
 @php74
 @occ
 dev-db/mysql
@@ -7,8 +6,5 @@ mail-mta/postfix
 net-fs/samba
 media-video/ffmpeg
 dev-db/redis
-sys-fs/btrfs-progs
-sys-fs/xfsprogs
 net-analyzer/zabbix
 dev-util/trace-cmd
-app-admin/logrotate

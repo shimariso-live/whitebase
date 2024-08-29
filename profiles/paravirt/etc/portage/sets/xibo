@@ -1,8 +1,6 @@
+genpack/paravirt
 dev-lang/php
 dev-db/mysql
 mail-mta/postfix
-sys-fs/btrfs-progs
-sys-fs/xfsprogs
 dev-util/trace-cmd
-app-admin/logrotate
-dev-php/pecl-zmq
+#dev-php/pecl-zmq # PHP 8.2 not supported

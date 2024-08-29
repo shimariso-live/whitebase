@@ -33,7 +33,7 @@ sys-fs/lvm2 lvm -readline systemd -thin udev
 net-misc/rsync xxhash rrsync
 net-analyzer/barnyard2 mysql
 dev-db/mysql -perl -server
-app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen qemu_softmmu_targets_aarch64
+app-emulation/qemu aio bzip2 curl fdt filecaps -gtk jpeg ncurses nls virtfs -oss pin-upstream-blobs png vhost-user-fs -pulseaudio -python usb vhost-net vnc xattr -opengl -virgl xfs -xkb -xen QEMU_SOFTMMU_TARGETS: x86_64 aarch64 riscv64 QEMU_USER_TARGETS: aarch64 riscv64
 app-emulation/xen-tools -api -pygrub -xend -hvm -qemu -system-qemu -ocaml -python -ovmf -rombios -ipxe -pam -qemu-traditional
 sys-apps/kexec-tools lzma
 x11-libs/cairo -X

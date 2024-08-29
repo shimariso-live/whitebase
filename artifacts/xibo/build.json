@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@common","@xibo"],
-	"services":["apache2","mysqld","cronie","qemu-guest-agent"]
+	"packages":["@xibo"],
+	"services":["apache2","mysqld"]
 }

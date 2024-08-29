@@ -1,5 +1,0 @@
-{
-    "profile":"paravirt",
-    "packages":["@arduino","@common","git"],
-    "services":["qemu-guest-agent"]
-}

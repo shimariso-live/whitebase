@@ -6,28 +6,28 @@ HUGINN_HOME=/home/huginn
 git clone --depth=1 https://github.com/cantino/huginn $HUGINN_HOME
 cd $HUGINN_HOME
 #gem install rake -v 13.0.6 --no-document
-gem install debug_inspector -v 0.0.3 --no-document
-gem install msgpack -v 1.4.2 --no-document
-gem install bootsnap -v 1.9.3 --no-document
-gem install byebug -v 8.2.5 --no-document
-gem install unf_ext -v 0.0.7.4 --no-document
-gem install eventmachine -v 1.2.7 --no-document
-gem install ffi -v 1.12.2 --no-document
-gem install kgio -v 2.10.0 --no-document
-gem install libv8-node --no-document
+#gem install debug_inspector -v 0.0.3 --no-document
+#gem install msgpack -v 1.4.2 --no-document
+#gem install bootsnap -v 1.9.3 --no-document
+#gem install byebug -v 8.2.5 --no-document
+#gem install unf_ext -v 0.0.7.4 --no-document
+#gem install eventmachine -v 1.2.7 --no-document
+#gem install ffi -v 1.12.2 --no-document
+#gem install kgio -v 2.10.0 --no-document
+#gem install libv8-node --no-document
 # https://github.com/rubyjs/mini_racer/issues/250
-ln -s x86_64-linux-musl /usr/local/lib64/ruby/gems/2.7.0/gems/libv8-node-16.10.0.0-x86_64-linux-musl/vendor/v8/x86_64-linux
-gem install --ignore-dependencies mini_racer -v 0.6.2 --no-document
-gem install mysql2 -v 0.5.2 --no-document
-gem install raindrops -v 0.17.0 --no-document
-gem install sassc -v 2.3.0 --no-document
-gem install unicorn -v 5.1.0 --no-document
-gem install nokogiri -v 1.12.5 --no-document
-gem install loofah -v 2.13.0 --no-document
-gem install binding_of_caller -v 0.8.0 --no-document
-gem install kaminari-actionview -v 1.1.1 --no-document
-gem install kaminari -v 1.1.1 --no-document
-gem install rails -v 6.0.4.4 -N # contains actioncable,actionmailbox,actionmailer,actiontext,railties
+#ln -s x86_64-linux-musl /usr/local/lib64/ruby/gems/*/gems/libv8-node-*-x86_64-linux-musl/vendor/v8/x86_64-linux
+#gem install --ignore-dependencies mini_racer -v 0.6.2 --no-document
+#gem install mysql2 -v 0.5.2 --no-document
+#gem install raindrops -v 0.17.0 --no-document
+#gem install sassc -v 2.3.0 --no-document
+#gem install unicorn -v 5.1.0 --no-document
+#gem install nokogiri -v 1.12.5 --no-document
+#gem install loofah -v 2.13.0 --no-document
+#gem install binding_of_caller -v 0.8.0 --no-document
+#gem install kaminari-actionview -v 1.1.1 --no-document
+#gem install kaminari -v 1.1.1 --no-document
+#gem install rails -v 6.0.4.4 -N # contains actioncable,actionmailbox,actionmailer,actiontext,railties
 
 mv .env.example .env
 sed -i 's/^DOMAIN=.*/DOMAIN=/' .env
@@ -37,13 +37,14 @@ sed -i 's/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=huginn/' .env
 sed -i 's/^# RAILS_ENV=production/RAILS_ENV=production/' .env
 echo 'RAILS_SERVE_STATIC_FILES=true' >> .env
 
+bundle install
 bundler # needs .env file
-grep -v libv8-node Gemfile.lock > /tmp/Gemfile.lock && mv /tmp/Gemfile.lock ./
+#grep -v libv8-node Gemfile.lock > /tmp/Gemfile.lock && mv /tmp/Gemfile.lock ./
 
 cat << 'EOS' > /tmp/sql
 create database `huginn` charset utf8mb4;
-create user `huginn`@localhost;
-grant all privileges on `huginn`.* to `huginn`@localhost identified by 'huginn';
+create user `huginn`@localhost identified by 'huginn';
+grant all privileges on `huginn`.* to `huginn`@localhost;
 EOS
 with-mysql 'mysql -u root < /tmp/sql'
 
@@ -61,7 +62,7 @@ index 094aec2f..66fc3e35 100644
    end
  end
 EOS
-patch -p1 < /tmp/patch
+#patch -p1 < /tmp/patch
 
 useradd huginn
 passwd -d huginn

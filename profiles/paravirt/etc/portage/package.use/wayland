@@ -1,0 +1,5 @@
+media-libs/mesa wayland -X
+x11-libs/gtk+ wayland -X
+media-libs/libepoxy -X
+dev-libs/weston -X rdp editor -xwayland
+net-misc/freerdp server

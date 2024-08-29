@@ -25,4 +25,5 @@ cat << 'EOS' > $HEDGEDOC_DIR/config.json
   }
 }
 EOS
+echo '# ENV=value' > $HEDGEDOC_DIR/.env
 chown -R hedgedoc:hedgedoc $HEDGEDOC_DIR

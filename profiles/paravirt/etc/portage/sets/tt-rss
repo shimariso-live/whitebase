@@ -1,12 +1,8 @@
-@common
-@paravirt
+genpack/paravirt
 dev-lang/php
 dev-db/mysql
 mail-mta/postfix
-sys-fs/btrfs-progs
-sys-fs/xfsprogs
 dev-php/pecl-apcu
 net-analyzer/zabbix
-app-admin/logrotate
 dev-vcs/git
 

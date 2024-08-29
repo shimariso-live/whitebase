@@ -2,6 +2,6 @@
 	"profile":"paravirt",
 	"description":"The 'Samba only' appliance",
 	"packages":["@samba"],
-	"services":["smb","nmb","cronie","qemu-guest-agent"],
+	"services":["smb","nmb"],
 	"outfile":"samba.squashfs"
 }

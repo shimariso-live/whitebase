@@ -1,5 +1,4 @@
-@paravirt
-@common
+genpack/paravirt
 net-fs/samba
 dev-python/xxhash
 app-misc/fdupes

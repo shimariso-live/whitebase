@@ -1,5 +1,4 @@
-@common
-@paravirt
+genpack/paravirt
 app-containers/docker
 app-containers/docker-compose
 www-servers/nginx

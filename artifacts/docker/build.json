@@ -2,5 +2,5 @@
 	"profile":"paravirt",
 	"description":"Docker appliance",
 	"packages":["@docker"],
-	"services":["docker","nginx","cronie","qemu-guest-agent"]
+	"services":["docker","nginx"]
 }

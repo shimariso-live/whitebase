@@ -1,9 +1,6 @@
 #!/bin/sh
 set -e
 
-mkdir -p /boot/grub
-echo -e 'linux /boot/kernel\ninitrd /boot/initramfs\nboot' > /boot/grub/grub.cfg
-
 echo "Cloning tt-rss..."
 mv /var/www/localhost/htdocs/config.php /tmp/
 rm -rf /var/www/localhost/htdocs

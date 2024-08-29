@@ -1,5 +1,5 @@
 {
 	"profile":"paravirt",
-	"packages":["@paravirt","@cloudflared","app-emulation/qemu-guest-agent","www-servers/nginx","sys-apps/yarn","app-editors/vim","dev-db/mysql"],
-	"services":["mysqld","hedgedoc","nginx","qemu-guest-agent"]
+	"packages":["genpack/paravirt","www-servers/nginx","sys-apps/yarn","dev-db/mysql"],
+	"services":["mysqld","hedgedoc","nginx"]
 }
