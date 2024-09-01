@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card0", TAG+="systemd"
+ACTION=="add", SUBSYSTEM=="graphics", KERNEL=="fb0", TAG+="systemd"

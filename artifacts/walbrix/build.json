@@ -1,0 +1,6 @@
+{
+	"compression":"xz",
+	"profile":"walbrix",
+	"packages":["@walbrix"],
+	"services":["rngd"]
+}

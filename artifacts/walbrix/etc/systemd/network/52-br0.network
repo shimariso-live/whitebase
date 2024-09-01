@@ -1,0 +1,8 @@
+[Match]
+Name=br0
+[Network]
+DHCP=yes
+MulticastDNS=yes
+LLMNR=yes
+[Link]
+RequiredForOnline=degraded-carrier

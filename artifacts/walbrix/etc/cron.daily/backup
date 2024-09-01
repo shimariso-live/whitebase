@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+DONE_FILE=/var/log/backup.done
+LOGFILE=/var/log/backup.log
+
+tty -s || exec >$LOGFILE 2>&1
+
+for i in `wb volume list -on`; do
+        SNAPSHOT=`wb volume snapshot $i`
+        if [ -x $SNAPSHOT/~backup ]; then
+		echo "Executing backup script $SNAPSHOT/~backup ..."
+                $SNAPSHOT/~backup $i || DONE_FILE=/dev/null
+        fi
+done
+
+date > $DONE_FILE
+
+echo "$0 done."
