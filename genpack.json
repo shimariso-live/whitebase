@@ -1,4 +1,4 @@
 {
-	"profiles":["default","paravirt","stub"],
-	"artifacts":["whitebase","stub","samba"]
+	"profiles":["walbrix","paravirt","stub"],
+	"artifacts":["walbrix","stub","samba"]
 }
