@@ -1,4 +1,5 @@
 genpack/paravirt
+sys-kernel/gentoo-kernel # no binary
 sys-apps/kexec-tools
 dev-util/debootstrap
 sys-fs/cryptsetup
