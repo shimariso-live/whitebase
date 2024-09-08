@@ -14,6 +14,7 @@ case "$(uname -m)" in
     riscv64)
         ARCH="riscv"
 	ARCH2="rv64_lp64d"
+	;;
     *)
         echo "Unsupported architecture"
         exit 1
