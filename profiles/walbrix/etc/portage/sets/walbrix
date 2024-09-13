@@ -1,5 +1,4 @@
-genpack/systemimg
-app-admin/wbui
+genpack/walbrix
 genpack/wireless
 net-misc/networkmanager
 sys-fs/compsize
@@ -54,6 +53,7 @@ mail-mta/ssmtp
 net-vpn/openvpn
 dev-vcs/git
 app-misc/tmux
+app-misc/screen
 sys-block/zram-init
 net-misc/socat
 sys-process/iotop
