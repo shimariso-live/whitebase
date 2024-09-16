@@ -2,10 +2,7 @@ genpack/walbrix
 genpack/wireless
 net-misc/networkmanager
 sys-fs/compsize
-app-editors/bvi
 app-admin/sysstat
-app-crypt/chntpw
-app-crypt/gocryptfs
 sys-process/lsof
 net-ftp/ftp
 sys-fs/squashfs-tools
@@ -20,12 +17,8 @@ sys-fs/cryptsetup
 sys-block/nbd
 sys-apps/sg3_utils
 sys-fs/ddrescue
-sys-fs/safecopy
 app-admin/testdisk
 sys-apps/gptfdisk
-app-backup/fsarchiver
-sys-apps/cciss_vol_status
-sys-cluster/drbd-utils
 sys-block/open-iscsi
 sys-fs/bcache-tools
 net-dns/bind-tools
@@ -35,7 +28,6 @@ net-analyzer/iftop
 net-firewall/ipset
 net-firewall/nftables
 net-misc/wakeonlan
-net-misc/ifenslave
 net-misc/vconfig
 net-misc/whois
 net-dns/dnsmasq
@@ -47,7 +39,6 @@ net-dialup/rp-pppoe
 net-dialup/ppp-scripts
 net-analyzer/nmap
 net-analyzer/snort
-net-analyzer/suricata
 net-misc/ndisc6
 mail-mta/ssmtp
 net-vpn/openvpn
@@ -62,11 +53,8 @@ dev-libs/openssl-compat
 app-benchmarks/stress
 app-admin/sudo
 sys-apps/rng-tools
-#sys-apps/memtest86+ # incompatible with arm
-#sys-block/megacli # incompatible with arm
 app-backup/rdiff-backup
 app-backup/btrbk
-sys-boot/mokutil
 net-misc/rclone
 
 sys-power/nut
