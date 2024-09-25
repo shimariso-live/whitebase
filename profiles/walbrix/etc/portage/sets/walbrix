@@ -42,6 +42,7 @@ net-analyzer/snort
 net-misc/ndisc6
 mail-mta/ssmtp
 net-vpn/openvpn
+net-vpn/tailscale
 dev-vcs/git
 app-misc/tmux
 app-misc/screen
