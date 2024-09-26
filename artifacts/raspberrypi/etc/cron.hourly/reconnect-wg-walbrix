@@ -1,0 +1,3 @@
+#!/bin/sh
+set -e
+wb wg ping --success-if-not-active --quiet || systemctl restart wg-quick\@wg-walbrix

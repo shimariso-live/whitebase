@@ -1,0 +1,6 @@
+{
+	"compression":"xz",
+	"profile":"raspberrypi",
+	"packages":["@walbrix"],
+	"services":["rngd"]
+}

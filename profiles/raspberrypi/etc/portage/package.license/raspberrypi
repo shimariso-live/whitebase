@@ -1,0 +1,4 @@
+sys-kernel/raspberrypi-image raspberrypi-videocore-bin
+sys-boot/raspberrypi-firmware raspberrypi-videocore-bin
+media-libs/raspberrypi-userland-bin raspberrypi-videocore-bin
+#sys-firmware/raspberrypi-wifi-ucode Broadcom
