@@ -21,6 +21,7 @@ app-admin/testdisk
 sys-apps/gptfdisk
 sys-block/open-iscsi
 sys-fs/bcache-tools
+sys-fs/bcachefs-tools
 net-dns/bind-tools
 net-analyzer/traceroute
 net-analyzer/netcat
