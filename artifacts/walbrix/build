@@ -5,7 +5,4 @@ sed -i "s/__VERSION__/$VERSION/g" /boot/grub/grub.cfg /etc/os-release
 mkdir -p /.genpack
 echo $VERSION > /.genpack/version
 
-# zabbix to be able to access suricata logs
-id zabbix && id suricata && usermod -aG suricata zabbix
-
 systemctl enable fstrim.timer display-manager wbui
