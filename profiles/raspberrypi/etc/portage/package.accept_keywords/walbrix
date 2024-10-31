@@ -8,3 +8,4 @@ net-fs/ksmbd-tools
 sys-boot/mokutil
 net-libs/libhtp
 dev-cpp/argparse
+dev-cpp/sdbus-c++ **

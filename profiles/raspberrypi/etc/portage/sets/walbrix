@@ -1,8 +1,9 @@
 genpack/walbrix
 sys-kernel/raspberrypi-image
+sys-kernel/linux-firmware
 media-libs/raspberrypi-userland-bin
 #dev-embedded/raspberrypi-utils
-#sys-firmware/raspberrypi-wifi-ucode
+sys-firmware/raspberrypi-wireless-firmware
 genpack/wireless
 net-misc/networkmanager
 sys-fs/compsize
@@ -75,3 +76,7 @@ media-sound/alsa-utils
 app-admin/ansible
 sys-boot/shim
 
+media-video/mediamtx
+media-video/ffmpeg
+
+app-misc/led-indicator
