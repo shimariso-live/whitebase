@@ -1,0 +1,12 @@
+[Unit]
+Description=Node-RED
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/node-red
+Restart=on-failure
+User=nodered
+WorkingDirectory=/home/nodered/nodered
+
+[Install]
+WantedBy=multi-user.target

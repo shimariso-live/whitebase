@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e
+npm install -g --unsafe-perm node-red
+useradd -m nodered
+mkdir /home/nodered/nodered
+chown -R nodered:nodered /home/nodered
