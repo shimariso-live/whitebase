@@ -4,3 +4,5 @@ npm install -g --unsafe-perm node-red
 useradd -m nodered
 mkdir /home/nodered/nodered
 chown -R nodered:nodered /home/nodered
+
+echo nodered 'ALL=NOPASSWD: /usr/bin/systemctl * nodered' > /etc/sudoers.d/allow-restart-nodered
