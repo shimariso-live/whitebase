@@ -1,7 +1,8 @@
 #!/bin/sh
 set -e
 /lib/systemd/systemd-networkd-wait-online
-BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos-stream/10-stream/BaseOS/x86_64/os/
+
+BASE_URL=http://ftp.iij.ad.jp/pub/linux/centos-stream/10-stream/BaseOS/$(uname -m)/os/
 
 if /sbin/mkfs.xfs -f -i nrext64=0 /dev/vdb; then
         mount /dev/vdb /mnt
