@@ -1,6 +1,7 @@
 genpack/systemimg baremetal
 sys-kernel/installkernel dracut
 sys-auth/pambase -passwdqc
+sys-libs/zlib minizip # for genpack-install
 sys-apps/systemd -acl static-libs # to force rebuild systemd
 app-crypt/libb2 -openmp # not to depend on gcc
 app-editors/vim minimal -python
