@@ -3,6 +3,7 @@ sys-kernel/installkernel dracut
 sys-auth/pambase -passwdqc
 sys-apps/systemd -acl static-libs # to force rebuild systemd
 app-crypt/libb2 -openmp # not to depend on gcc
+sys-libs/zlib minizip # needed by genpack-install 
 app-editors/vim minimal -python
 app-admin/sudo -sendmail pam
 net-analyzer/zabbix sqlite agent proxy curl snmp -postgres
