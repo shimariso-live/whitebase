@@ -1,4 +1,4 @@
 {
 	"profiles":["walbrix","paravirt","stub"],
-	"artifacts":["walbrix","stub","samba"]
+	"artifacts":["walbrix","stub","samba","raspberrypi"]
 }
