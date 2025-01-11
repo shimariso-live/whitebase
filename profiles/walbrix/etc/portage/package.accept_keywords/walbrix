@@ -8,4 +8,5 @@ net-fs/ksmbd-tools
 sys-boot/mokutil
 net-libs/libhtp
 dev-cpp/argparse
+dev-libs/iniparser # for iniparser-4.2.5
 net-vpn/tailscale
