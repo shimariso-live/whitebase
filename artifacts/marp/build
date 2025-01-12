@@ -11,4 +11,4 @@ echo -e 'Presentation\n====\nHello, World!\n' > /home/marp/slides/index.md
 mkdir /home/marp/.ssh
 touch /home/marp/.ssh/authorized_keys
 chmod 700 /home/marp/.ssh
-chown -R marp:marp /home/marp/slides
+chown -R marp:marp /home/marp
