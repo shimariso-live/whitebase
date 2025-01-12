@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+sed -i 's/listen 127\.0\.0\.1/listen 0.0.0.0/' /etc/nginx/nginx.conf
+
+download $(get-github-download-url marp-team marp-cli '^marp-cli-.+-linux.tar.gz') | tar zxf - -C /tmp
+mv /tmp/marp /usr/bin/
+
+useradd -m marp
+mkdir /home/marp/slides
+echo -e 'Presentation\n====\nHello, World!\n' > /home/marp/slides/index.md
+mkdir /home/marp/.ssh
+touch /home/marp/.ssh/authorized_keys
+chmod 700 /home/marp/.ssh
+chown -R marp:marp /home/marp/slides

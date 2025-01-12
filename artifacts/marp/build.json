@@ -1,0 +1,5 @@
+{
+	"profile":"paravirt",
+	"packages":["genpack/paravirt","nginx","sudo"],
+	"services":["nginx","marp"]
+}

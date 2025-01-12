@@ -1,0 +1,1 @@
+marp ALL=NOPASSWD: /usr/bin/systemctl * marp, /usr/bin/systemctl * marp.service

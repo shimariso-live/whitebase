@@ -1,0 +1,13 @@
+[Unit]
+Description=marp
+After=network.target
+
+[Service]
+User=marp
+Group=nginx
+
+ExecStart=/usr/bin/marp -s /home/marp/slides
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
