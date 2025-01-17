@@ -1,0 +1,13 @@
+[Unit]
+Description=Node-Media-Server
+After=network.target
+
+[Service]
+User=nms
+Group=nginx
+
+ExecStart=/home/nms/node-media-server/node_modules/.bin/node-media-server
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

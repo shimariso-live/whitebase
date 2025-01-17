@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+useradd -m nms
+cd /home/nms
+mkdir node-media-server
+cd node-media-server
+npm install node-media-server
+sed -i 's/0\.0\.0\.0/::/g' /home/nms/node-media-server/node_modules/node-media-server/bin/config.json
+chown -R nms:nms /home/nms

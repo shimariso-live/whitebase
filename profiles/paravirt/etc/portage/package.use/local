@@ -9,6 +9,7 @@ sys-apps/systemd policykit # policykit is required by firewalld
 app-crypt/libb2 -openmp # not to depend on gcc
 dev-libs/openssl weak-ssl-ciphers # some binary still depends on this
 app-admin/ulogd sqlite
+net-libs/nodejs npm
 
 # Restrict ruby versions
 */* RUBY_TARGETS: -ruby31 ruby32 -ruby33

@@ -1,0 +1,5 @@
+{
+    "profile":"paravirt",
+    "packages":["genpack/paravirt","net-libs/nodejs","media-video/ffmpeg"],
+    "services":["node-media-server"]
+}
