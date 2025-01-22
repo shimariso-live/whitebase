@@ -21,6 +21,7 @@ net-dns/dnsmasq dhcp-tools script dnssec
 sys-fs/squashfs-tools lzma
 net-misc/modemmanager mbim
 sys-fs/squashfuse lz4 lzma lzo zstd
+app-admin/testdisk ntfs
 x11-libs/cairo
 gui-libs/gtk wayland
 x11-libs/gtk+ wayland # bdepend by adwaita-icon-theme
