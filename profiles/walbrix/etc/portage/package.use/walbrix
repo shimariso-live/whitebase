@@ -28,4 +28,5 @@ x11-libs/gtk+ wayland # bdepend by adwaita-icon-theme
 media-libs/mesa wayland VIDEO_CARDS: d3d12 virgl vmware
 x11-libs/libdrm VIDEO_CARDS: vmware
 dev-libs/weston kiosk
+sys-boot/grub GRUB_PLATFORMS: efi-32
 */* -X
