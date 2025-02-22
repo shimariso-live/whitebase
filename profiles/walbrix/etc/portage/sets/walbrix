@@ -1,6 +1,7 @@
 genpack/walbrix
 genpack/wireless
 net-misc/networkmanager
+sys-apps/create-sriov-vfs
 sys-fs/compsize
 app-admin/sysstat
 sys-process/lsof
