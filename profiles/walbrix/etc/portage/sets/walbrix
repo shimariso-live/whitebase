@@ -71,6 +71,5 @@ dev-python/pip # for esp-idf
 
 dev-libs/libvterm
 media-sound/alsa-utils
-app-admin/ansible
 sys-boot/shim
 

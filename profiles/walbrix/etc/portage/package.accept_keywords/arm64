@@ -21,4 +21,3 @@ sys-fs/squashfuse *
 sys-apps/usb_modeswitch ~arm64
 dev-python/pylibacl ~arm64
 net-libs/librsync ~arm64
-dev-lang/go ~arm64 # for tailscale
